@@ -4,6 +4,7 @@ a failure is retried, never handed to the problem-fixer; and nothing may change 
     python3 -m unittest tests.test_system_jobs
 """
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -33,8 +34,9 @@ class SystemJobsTest(unittest.TestCase):
         shutil.rmtree(self.root.parent, ignore_errors=True)
 
     def py(self, code: str) -> subprocess.CompletedProcess:
+        # An API key, so the health line doesn't depend on this machine being signed in to Claude.
         return subprocess.run([sys.executable, "-c", "import sys; sys.path.insert(0, 'scripts')\n" + code], cwd=self.root,
-                              capture_output=True, text=True)
+                              capture_output=True, text=True, env={**os.environ, "ANTHROPIC_API_KEY": "sk-test"})
 
     def heartbeat(self) -> subprocess.CompletedProcess:
         return subprocess.run([sys.executable, "scripts/heartbeat.py"], cwd=self.root, capture_output=True, text=True)

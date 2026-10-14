@@ -8,6 +8,9 @@ on:
 jobs:
   engine:
     runs-on: ubuntu-latest
+    env:
+      # The tests give the engine its own HOME; keep Playwright's browser where both can find it.
+      PLAYWRIGHT_BROWSERS_PATH: /home/runner/ms-playwright
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
