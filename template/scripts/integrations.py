@@ -77,12 +77,14 @@ def _gateway() -> tuple[str, str] | None:
     return (base.rstrip("/"), token) if base and token else None
 
 
-def _request(method: str, path: str, body: bytes | None = None, headers: dict | None = None):
+def _request(method: str, path: str, body: bytes | None = None, headers: dict | None = None, read_only: bool = False):
     gw = _gateway()
     if not gw:
         raise IntegrationError("Connected accounts are only available in Steerable Cloud.")
     base, token = gw
     headers = {"Authorization": f"Bearer {token}", **(headers or {}), **_context_headers()}
+    if read_only:  # the gateway treats it like a dry run: nothing is sent on the owner's behalf
+        headers = {k: v for k, v in headers.items() if k != "X-Steerable-Context"} | {"X-Steerable-Dry-Run": "1"}
     req = urllib.request.Request(base + path, data=body, method=method, headers=headers)
     try:
         with urllib.request.urlopen(req, timeout=60) as r:
@@ -195,9 +197,10 @@ def _own_sites() -> list[dict]:
             for s in local.saved()]
 
 
-def browser_session(host: str) -> dict:
+def browser_session(host: str, read_only: bool = False) -> dict:
     """The saved login for a site: {"site", "name", "startUrl", "storageState"}. Pass storageState to
-    Playwright's new_context(storage_state=...). Only approved routines and dry runs may have it.
+    Playwright's new_context(storage_state=...). Only approved routines and dry runs may have it, and
+    fixed engine code that only reads with it (read_only=True, like reddit.py; see site_browser).
     Logins saved on this engine's dashboard come first; then Steerable Cloud's."""
     import sites as local
     if (saved := local.find(host)) is not None:
@@ -205,7 +208,7 @@ def browser_session(host: str) -> dict:
     if not _gateway():
         raise IntegrationError(f"There's no saved login for {host}. The owner can log in to it on the "
                                "Connections page.", 409, f"site:{local.site_key(host)}")
-    return _request("GET", f"/x/site/{urllib.parse.quote(host.lower(), safe='')}/session")
+    return _request("GET", f"/x/site/{urllib.parse.quote(host.lower(), safe='')}/session", read_only=read_only)
 
 
 def site_expired(host: str) -> None:
@@ -223,20 +226,35 @@ class site_browser:
 
     Pass logged_in=<CSS selector that only shows when logged in> to check it; if it's missing the
     owner is asked to log in again and IntegrationError is raised. Dry runs block every request
-    that isn't a read (GET), so testing can't submit anything."""
+    that isn't a read (GET), so testing can't submit anything.
 
-    def __init__(self, host: str, logged_in: str | None = None, timeout_ms: int = 30_000):
+    read_only=True does the same in any run: for fixed engine code that only reads a site with the
+    owner's login (reddit.py), which the chat may run too. guest=True browses without a login when
+    there's no saved one. start=<url> opens that page instead of the login's start page.
+
+    Some sites (Reddit) treat any request interception as a bot: Playwright turns the browser's cache
+    off while it intercepts. For them pass block=[URL patterns that act, like "*://*.reddit.com/api/*"]:
+    read_only then blocks those in Chrome itself (Network.setBlockedURLs) and intercepts nothing."""
+
+    def __init__(self, host: str, logged_in: str | None = None, timeout_ms: int = 30_000, read_only: bool = False,
+                 guest: bool = False, start: str | None = None, block: list[str] | None = None):
         self.host, self.logged_in, self.timeout_ms = host, logged_in, timeout_ms
+        self.read_only, self.guest, self.start, self.block = read_only, guest, start, block
 
     def __enter__(self):
         from playwright.sync_api import sync_playwright  # only routines that drive a site need it
 
         import browser
-        saved = browser_session(self.host)
+        try:
+            saved = browser_session(self.host, read_only=self.read_only)
+        except IntegrationError as e:
+            if not (self.guest and e.status == 409):
+                raise
+            saved = {"guest": True, "storageState": None}  # no login saved (or it expired): browse as a visitor
         site = saved.get("site") or browser.site_key(self.host)
         self._held = contextlib.ExitStack()
         profile = browser.profile_dir(site)
-        if not profile.exists():
+        if saved.get("guest") or not profile.exists():
             profile = None  # a login from Steerable Cloud, or saved before profiles were kept
         else:
             try:  # a live login on this site, or another routine, may have it for a while
@@ -246,7 +264,9 @@ class site_browser:
                                        409) from None
         self._pw = sync_playwright().start()
         try:
-            if profile:
+            if saved.get("guest"):
+                context = browser.launch(self._pw)
+            elif profile:
                 context = browser.launch(self._pw, profile)
                 # The profile's cookies are the freshest, but Chrome doesn't keep the ones that
                 # last only for a browsing session, which is often the login: add those back.
@@ -259,7 +279,16 @@ class site_browser:
             raise
         self._context = context
         context.set_default_timeout(self.timeout_ms)
-        if os.environ.get("STEERABLE_DRY_RUN") == "1":
+        if self.block and (self.read_only or os.environ.get("STEERABLE_DRY_RUN") == "1"):
+            def blocklist(p) -> None:
+                cdp = context.new_cdp_session(p)
+                cdp.send("Network.enable")
+                cdp.send("Network.setBlockedURLs", {"urls": self.block})
+
+            for p in context.pages:
+                blocklist(p)
+            context.on("page", blocklist)
+        elif self.read_only or os.environ.get("STEERABLE_DRY_RUN") == "1":
             # Only reads go out, and what keeps the login alive (browser.keeps_login): nothing is submitted.
             context.route("**/*", lambda route: route.continue_() if route.request.method in ("GET", "HEAD", "OPTIONS")
                           or browser.keeps_login(route.request.url, self.host) else route.fulfill(status=204, body=""))
@@ -267,9 +296,9 @@ class site_browser:
         import runtrace
 
         runtrace.watch(page)  # a practice or watched run: pictures of what it does
-        page.goto(saved.get("startUrl") or f"https://{self.host}/")
-        if self.logged_in and not page.locator(self.logged_in).count():
-            if os.environ.get("STEERABLE_DRY_RUN") != "1":
+        page.goto(self.start or saved.get("startUrl") or f"https://{self.host}/")
+        if self.logged_in and not saved.get("guest") and not page.locator(self.logged_in).count():
+            if os.environ.get("STEERABLE_DRY_RUN") != "1" and not self.read_only:
                 site_expired(self.host)
             self.__exit__(None, None, None)
             raise IntegrationError(f"The saved login to {saved.get('name') or self.host} has expired. "

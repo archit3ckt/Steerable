@@ -702,6 +702,17 @@ def social_decision(d: dict) -> dict:
     context = d.get("why") or "It came up in your chat."
     if d.get("rules"):
         context += f" r/{d['subreddit']}'s rules: " + "; ".join(r for r in d["rules"] if r) + "."
+    if d.get("by_hand"):
+        # Reddit doesn't let apps post any more: the owner posts it, and tells the COO they did.
+        return {"id": f"social:{d['id']}", "kind": "approval", "urgent": False,
+                "title": f"Post this on r/{d['subreddit']}?",
+                "context": f"{context} Reddit doesn't let apps post, so this one is yours: on reddit.com/r/{d['subreddit']}, "
+                           "start a post and paste the title and text below.",
+                "recommendation": {"optionId": "post", "why": ""},
+                "options": [{"id": "post", "label": "I posted it", "tone": "primary", "outcome": "I'll note it in your timeline."},
+                            {"id": "skip", "label": "Don't post", "tone": "quiet"}],
+                "facts": facts, "draft": {"label": "Title and text to paste", "body": f"{d['title']}\n\n{d['text']}"},
+                "createdAt": d["at"]}
     return {"id": f"social:{d['id']}", "kind": "approval", "urgent": False,
             "title": f"Post this to {where}?",
             "context": context,
@@ -718,7 +729,9 @@ def decisions() -> list[dict]:
     out += [tool_decision(p) for p in approvals.pending()]
     out += [social_decision(d) for d in social.pending()]
     out += [change_decision(c) for c in change.pending()]
-    out += [value_decision(name, r) for name, r in vault.requests().items()]
+    # Reddit app keys were asked for before Reddit stopped giving them out (posts are by hand now).
+    retired = {k[0] for k in social.NEEDS["reddit"]}
+    out += [value_decision(name, r) for name, r in vault.requests().items() if name not in retired]
     if not accounts.remote():  # in Steerable Cloud the app asks the owner itself
         out += [account_decision(a) for a in accounts.listing() if a["status"] == "PROPOSED"]
     covered = {i.get("workflow") for i in awaiting}

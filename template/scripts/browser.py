@@ -137,7 +137,10 @@ def user_agent(executable: str) -> str | None:
 
 def context_options(pw) -> dict:
     executable = env("CHROMIUM_PATH") or pw.chromium.executable_path
-    options = {"viewport": VIEWPORT, "screen": SCREEN, "color_scheme": "light"}
+    # The --accept-lang flag sets navigator.languages but, under automation, no Accept-Language
+    # header at all, which every real browser sends and sites (Reddit) take for a bot: send it as Chrome does.
+    options = {"viewport": VIEWPORT, "screen": SCREEN, "color_scheme": "light",
+               "extra_http_headers": {"Accept-Language": accept_language()}}
     if tz := timezone():
         options["timezone_id"] = tz
     if ua := user_agent(executable):
@@ -145,12 +148,22 @@ def context_options(pw) -> dict:
     return options
 
 
+def _locale() -> str:
+    locale = env("BROWSER_LOCALE") or "en-US"
+    return locale if re.fullmatch(r"[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8})*", locale) else "en-US"
+
+
+def accept_language() -> str:
+    """The Accept-Language header Chrome sends for the owner's language: "en-GB,en;q=0.9"."""
+    locale = _locale()
+    base = locale.split("-")[0]
+    return f"{locale},{base};q=0.9" if base != locale else locale
+
+
 def language_args() -> list[str]:
     """The owner's language as Chrome itself sends it: "en-GB,en;q=0.9" and navigator.languages
     ["en-GB", "en"]. (Playwright's own locale option would send the one tag alone.)"""
-    locale = env("BROWSER_LOCALE") or "en-US"
-    if not re.fullmatch(r"[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8})*", locale):
-        locale = "en-US"
+    locale = _locale()
     base = locale.split("-")[0]
     return [f"--lang={locale}", f"--accept-lang={locale},{base}" if base != locale else f"--accept-lang={locale}"]
 

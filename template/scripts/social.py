@@ -11,6 +11,11 @@ Who decides a post goes out:
   Instagram?"), with exactly what goes out. It's published when they tap Post (agent_api.decide).
 - An approved routine (STEERABLE_CONTEXT=routine) posts directly, except to Reddit, which
   always waits for the owner: subreddits punish anything that reads like a bot.
+
+Reddit closed its API to new apps (November 2025), so Reddit needs no keys: the COO reads the
+subreddit's rules with reddit.py (a real browser, read-only), drafts the post, and the owner posts it
+themselves ("I posted it" in Decisions). Owners who already have Reddit app keys keep posting
+through the API.
 - A dry run (STEERABLE_DRY_RUN=1) prints what it would post and posts nothing.
 
 Instagram only takes a picture at a public address, which a server here doesn't have, so the
@@ -18,7 +23,7 @@ picture is uploaded to the Facebook Page unpublished and Instagram is given that
 
     .venv/bin/python scripts/social.py status
     .venv/bin/python scripts/social.py setup instagram
-    .venv/bin/python scripts/social.py rules smallbusiness          # a subreddit's rules and flairs
+    .venv/bin/python scripts/social.py rules smallbusiness          # a subreddit's rules
     .venv/bin/python scripts/social.py post --to facebook,instagram --text "..." --image files/2026-10/ab12-photo.jpg
     .venv/bin/python scripts/social.py post --to reddit --subreddit smallbusiness --title "..." --text "..."
 """
@@ -301,10 +306,17 @@ def _subreddit(name: str) -> str:
 
 # ---------- drafts, checks and publishing ----------
 
+def reddit_by_hand() -> bool:
+    """No Reddit app keys (Reddit stopped giving them out): the owner posts drafts themselves."""
+    return not all(env(k[0]) for k in NEEDS["reddit"])
+
+
 def missing(networks: list[str]) -> list[tuple]:
-    """The keys still needed for these networks, as (name, label, hint, url)."""
+    """The keys still needed for these networks, as (name, label, hint, url). Reddit needs none."""
     needed = []
     for n in networks:
+        if n == "reddit":
+            continue
         for group in REQUIRES.get(n, [n]):
             needed += [k for k in NEEDS[group] if not env(k[0]) and k not in needed]
     return needed
@@ -314,6 +326,8 @@ def setup(network: str) -> list[str]:
     """Ask the owner, in their Decisions, for whatever this network still needs. Returns what was asked."""
     if network not in NETWORKS:
         raise SocialError(f"Pick one of: {', '.join(NETWORKS)}.")
+    if network == "reddit":
+        return []  # nothing to set up: drafts for the owner to post (reddit_by_hand)
     asked = []
     for name, label, hint, url in missing([network]):
         vault.ask(name, label=label, why=f"So I can post to your {NAMES[network]} when you approve it.", url=url, hint=hint)
@@ -354,6 +368,8 @@ def check(draft: dict) -> None:
             raise SocialError("Reddit posts from here are text or a link, not pictures. Post to Reddit separately.")
         if not draft.get("subreddit") or not draft.get("title"):
             raise SocialError("A Reddit post needs a subreddit and a title.")
+        if len(nets) > 1 and reddit_by_hand():
+            raise SocialError("Draft the Reddit post on its own: the owner posts it to Reddit themselves.")
         if len(draft["title"]) > 300:
             raise SocialError("Reddit titles are up to 300 characters.")
 
@@ -383,7 +399,16 @@ def draft(networks: list[str], text: str, image: str | None = None, link: str | 
             setup(n)
         raise SocialError("First I need " + ", ".join(k[1] for k in need) + ". I've asked the owner for it in Decisions; "
                           "try again once it's added.")
-    if "reddit" in networks:
+    if "reddit" in networks and reddit_by_hand():
+        import reddit
+
+        try:
+            rules = reddit.rules(subreddit)
+        except reddit.RedditError as e:
+            raise SocialError(str(e)) from None
+        d["rules"] = [r["name"] for r in rules["rules"]][:10]
+        d["subreddit"], d["by_hand"] = rules["subreddit"], True
+    elif "reddit" in networks:
         rules = reddit_rules(subreddit)
         if rules["flairRequired"] and not flair:
             options = ", ".join(f"{f['text']} (--flair {f['id']})" for f in rules["flairs"][:10]) or "see the subreddit"
@@ -402,6 +427,12 @@ def publish(d: dict) -> list[dict]:
     results = []
     for n in d["networks"]:
         try:
+            if n == "reddit" and d.get("by_hand"):
+                url = f"https://www.reddit.com/r/{d['subreddit']}/"
+                results.append({"network": n, "ok": True, "url": url, "by_hand": True})
+                record_event(f"You posted to r/{d['subreddit']}: {d['title']}", who="CEO")
+                log_run("social", "posted_by_owner", network=n, subreddit=d["subreddit"])
+                continue
             if n == "reddit":
                 out = post_reddit(d["text"], image, d.get("link"), d["title"], d["subreddit"], d.get("flair"))
             else:
@@ -434,7 +465,8 @@ def resolve(did: str, post_it: bool) -> list[dict] | None:
 
 def summary(results: list[dict]) -> str:
     """What happened, for the chat."""
-    lines = [f"- {NAMES[r['network']]}: {r['url'] if r['ok'] else r['error']}" for r in results]
+    lines = [f"- {NAMES[r['network']]}: " + ("you posted it" if r.get("by_hand") else r["url"] if r["ok"] else r["error"])
+             for r in results]
     ok = all(r["ok"] for r in results)
     return ("Posted." if ok else "Some of it didn't go out.") + "\n" + "\n".join(lines)
 
@@ -490,7 +522,15 @@ def main() -> int:
             asked = setup(args.network)
             print(f"Asked the owner for: {', '.join(asked)}." if asked else f"{NAMES[args.network]} is already set up.")
         elif args.cmd == "rules":
-            print(json.dumps(reddit_rules(args.subreddit), indent=1))
+            if reddit_by_hand():
+                import reddit
+
+                try:
+                    print(json.dumps(reddit.rules(args.subreddit), indent=1, ensure_ascii=False))
+                except reddit.RedditError as e:
+                    raise SocialError(str(e)) from None
+            else:
+                print(json.dumps(reddit_rules(args.subreddit), indent=1))
         else:
             nets = [n.strip().lower() for n in args.to.split(",") if n.strip()]
             out = post(nets, args.text, image=args.image, link=args.link, title=args.title, subreddit=args.subreddit,
