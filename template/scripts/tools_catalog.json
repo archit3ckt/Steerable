@@ -1,0 +1,288 @@
+{
+  "$comment": "Services the owner can connect themselves, as official remote MCP servers that any app may sign in to (OAuth with dynamic client registration) or that take a key. Read by scripts/tools.py; the dashboard's Connections page shows them. Add one by adding an entry: its vendor's MCP address and how it signs in. Services that need an app registered by hand (Slack, HubSpot, Asana, Zoom, Google) aren't here: connect them as connectors at claude.ai, or use Steerable Cloud.",
+  "stripe": {
+    "name": "Stripe",
+    "description": "Payments: see payments, invoices, customers and payouts.",
+    "category": "Payments",
+    "uses": [
+      "Chasing unpaid invoices",
+      "Spotting failed payments",
+      "Weekly revenue numbers"
+    ],
+    "auth": {
+      "type": "apikey",
+      "keyLabel": "Restricted key",
+      "keyHint": "In Stripe, open Developers, then API keys, and create a restricted key. Give it Read access to what your COO should see.",
+      "keyPattern": "^(rk|sk)_(live|test)_[A-Za-z0-9]{10,}$",
+      "header": "Authorization",
+      "headerFormat": "Bearer {key}"
+    },
+    "mcp": {
+      "url": "https://mcp.stripe.com"
+    }
+  },
+  "paypal": {
+    "name": "PayPal",
+    "description": "Payments, invoices and disputes.",
+    "category": "Payments",
+    "uses": [
+      "Chasing unpaid invoices",
+      "Handling disputes"
+    ],
+    "auth": {
+      "type": "mcp-oauth"
+    },
+    "mcp": {
+      "url": "https://mcp.paypal.com/mcp"
+    }
+  },
+  "calendly": {
+    "name": "Calendly",
+    "description": "Bookings: see and manage scheduled meetings.",
+    "category": "Email and calendar",
+    "uses": [
+      "Preparing for calls",
+      "Following up after meetings"
+    ],
+    "auth": {
+      "type": "mcp-oauth"
+    },
+    "mcp": {
+      "url": "https://mcp.calendly.com/"
+    }
+  },
+  "intercom": {
+    "name": "Intercom",
+    "description": "Customer conversations and contacts.",
+    "category": "Customers and sales",
+    "uses": [
+      "Answering customers",
+      "Spotting common questions"
+    ],
+    "auth": {
+      "type": "mcp-oauth"
+    },
+    "mcp": {
+      "url": "https://mcp.intercom.com/mcp"
+    }
+  },
+  "close": {
+    "name": "Close",
+    "description": "CRM for small sales teams: leads, calls and emails.",
+    "category": "Customers and sales",
+    "uses": [
+      "Following up on leads",
+      "Logging calls"
+    ],
+    "auth": {
+      "type": "mcp-oauth"
+    },
+    "mcp": {
+      "url": "https://mcp.close.com/mcp"
+    }
+  },
+  "notion": {
+    "name": "Notion",
+    "description": "Pages and databases: read, write and organize your notes and docs.",
+    "category": "Docs and projects",
+    "uses": [
+      "Keeping docs up to date",
+      "Weekly notes",
+      "Finding what you wrote down"
+    ],
+    "auth": {
+      "type": "mcp-oauth"
+    },
+    "mcp": {
+      "url": "https://mcp.notion.com/mcp"
+    }
+  },
+  "airtable": {
+    "name": "Airtable",
+    "description": "Bases and records: read and update the tables you run the business on.",
+    "category": "Docs and projects",
+    "uses": [
+      "Updating your trackers",
+      "Inventory and orders",
+      "Reports from your data"
+    ],
+    "auth": {
+      "type": "mcp-oauth"
+    },
+    "mcp": {
+      "url": "https://mcp.airtable.com/mcp"
+    }
+  },
+  "monday": {
+    "name": "monday.com",
+    "description": "Boards and items: track work and update statuses.",
+    "category": "Docs and projects",
+    "uses": [
+      "Updating boards",
+      "Status reports"
+    ],
+    "auth": {
+      "type": "mcp-oauth"
+    },
+    "mcp": {
+      "url": "https://mcp.monday.com/mcp"
+    }
+  },
+  "clickup": {
+    "name": "ClickUp",
+    "description": "Tasks and docs: plan and track work.",
+    "category": "Docs and projects",
+    "uses": [
+      "Creating tasks",
+      "Weekly status"
+    ],
+    "auth": {
+      "type": "mcp-oauth"
+    },
+    "mcp": {
+      "url": "https://mcp.clickup.com/mcp"
+    }
+  },
+  "linear": {
+    "name": "Linear",
+    "description": "Issues and projects, for product teams.",
+    "category": "Docs and projects",
+    "uses": [
+      "Filing and triaging issues",
+      "Release notes"
+    ],
+    "auth": {
+      "type": "mcp-oauth"
+    },
+    "mcp": {
+      "url": "https://mcp.linear.app/mcp"
+    }
+  },
+  "atlassian": {
+    "name": "Jira and Confluence",
+    "description": "Atlassian: Jira issues and Confluence pages.",
+    "category": "Docs and projects",
+    "uses": [
+      "Tracking issues",
+      "Keeping pages current"
+    ],
+    "auth": {
+      "type": "mcp-oauth"
+    },
+    "mcp": {
+      "url": "https://mcp.atlassian.com/v1/mcp"
+    }
+  },
+  "dropbox": {
+    "name": "Dropbox",
+    "description": "Files: find, organize and share them.",
+    "category": "Files",
+    "uses": [
+      "Filing documents",
+      "Sharing links with customers"
+    ],
+    "auth": {
+      "type": "mcp-oauth"
+    },
+    "mcp": {
+      "url": "https://mcp.dropbox.com/claude_app_mcp"
+    }
+  },
+  "klaviyo": {
+    "name": "Klaviyo",
+    "description": "Email and SMS marketing: lists, campaigns and results.",
+    "category": "Marketing",
+    "uses": [
+      "Campaign results",
+      "Keeping lists clean"
+    ],
+    "auth": {
+      "type": "mcp-oauth"
+    },
+    "mcp": {
+      "url": "https://mcp.klaviyo.com/mcp"
+    }
+  },
+  "canva": {
+    "name": "Canva",
+    "description": "Designs: create and resize them in your brand.",
+    "category": "Marketing",
+    "uses": [
+      "Social posts",
+      "Resizing designs"
+    ],
+    "auth": {
+      "type": "mcp-oauth"
+    },
+    "mcp": {
+      "url": "https://mcp.canva.com/mcp"
+    }
+  },
+  "wix": {
+    "name": "Wix",
+    "description": "Your Wix site and store: pages, products and orders.",
+    "category": "Website and store",
+    "uses": [
+      "Updating products",
+      "Checking orders"
+    ],
+    "auth": {
+      "type": "mcp-oauth"
+    },
+    "mcp": {
+      "url": "https://mcp.wix.com/mcp"
+    }
+  },
+  "zapier": {
+    "name": "Zapier",
+    "description": "Thousands of other apps, through the Zapier actions you enable.",
+    "category": "Everything else",
+    "uses": [
+      "Apps not listed here",
+      "Automations you already use"
+    ],
+    "auth": {
+      "type": "mcp-oauth"
+    },
+    "mcp": {
+      "url": "https://mcp.zapier.com/api/v1/connect"
+    }
+  },
+  "apify": {
+    "name": "Apify",
+    "description": "Web scraping: thousands of ready-made scrapers for maps, shops, social media and any website.",
+    "category": "Websites and research",
+    "uses": [
+      "Collecting leads from Google Maps",
+      "Watching competitors' prices",
+      "Pulling reviews"
+    ],
+    "auth": {
+      "type": "mcp-oauth"
+    },
+    "mcp": {
+      "url": "https://mcp.apify.com"
+    }
+  },
+  "firecrawl": {
+    "name": "Firecrawl",
+    "description": "Read any website: pages, search results and whole sites, turned into clean text.",
+    "category": "Websites and research",
+    "uses": [
+      "Watching a page for changes",
+      "Researching a market",
+      "Reading a supplier's catalog"
+    ],
+    "auth": {
+      "type": "apikey",
+      "optional": true,
+      "keyLabel": "API key (optional)",
+      "keyHint": "It works without one, with limits. For more, create a key at firecrawl.dev/app/api-keys.",
+      "keyPattern": "^fc-[A-Za-z0-9]{8,}$",
+      "urlFormat": "https://mcp.firecrawl.dev/{key}/v2/mcp"
+    },
+    "mcp": {
+      "url": "https://mcp.firecrawl.dev/v2/mcp"
+    }
+  }
+}

@@ -1,0 +1,67 @@
+name: CI
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+
+jobs:
+  engine:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install the engine's packages and a browser
+        run: |
+          pip install -r template/requirements.txt
+          python -m playwright install --with-deps chromium
+      - name: Tests
+        run: |
+          git config --global user.name CI
+          git config --global user.email ci@example.com
+          python -m unittest discover -s tests -v
+
+  dashboard:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: dashboard
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: dashboard/package-lock.json
+      - run: npm ci
+      - run: npx next typegen
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm run build
+
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: The compose file is valid
+        run: COMPANY_NAME=Test DASHBOARD_PASSWORD=testtest docker compose config --quiet
+      - name: The installer parses
+        run: sh -n get.sh && bash -n install.sh
+
+  # Steerable Cloud (the hosted version) runs the latest engine: after a push to master passes,
+  # tell it to build and deploy this commit. Needs the STEERABLE_CLOUD_DEPLOY_TOKEN secret (a
+  # fine-grained token that can only start Steerable Cloud's workflows); without it (forks,
+  # self-hosters) this does nothing. Never runs for pull requests.
+  cloud:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    needs: [engine, dashboard, docker]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ask Steerable Cloud to deploy this engine
+        env:
+          GH_TOKEN: ${{ secrets.STEERABLE_CLOUD_DEPLOY_TOKEN }}
+        run: |
+          if [ -z "$GH_TOKEN" ]; then echo "No STEERABLE_CLOUD_DEPLOY_TOKEN: nothing to deploy to."; exit 0; fi
+          gh workflow run deploy-engine.yml -R archit3ckt/steerable-cloud -f ref="$GITHUB_SHA"

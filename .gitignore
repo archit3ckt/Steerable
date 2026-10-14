@@ -1,0 +1,6 @@
+__pycache__/
+# docker compose settings: your keys and passphrase
+.env
+
+# Local, per-machine additions to docker-compose.yml (Compose reads this automatically; never ship one)
+docker-compose.override.yml

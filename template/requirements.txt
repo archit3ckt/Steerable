@@ -1,0 +1,7 @@
+anthropic==1.11.0
+python-dotenv==1.2.4
+playwright==1.63.0
+openpyxl==3.1.5
+python-docx==1.2.0
+python-pptx==1.0.2
+pypdf==5.4.0

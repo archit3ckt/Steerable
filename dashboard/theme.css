@@ -1,0 +1,178 @@
+/*
+ * The dashboard's look, for any app hosting it. Import it after Tailwind, and let Tailwind see
+ * the dashboard's classes:
+ *
+ *   @import "tailwindcss";
+ *   @import "@steerable/dashboard/theme.css";
+ *   @source "<path to>/node_modules/@steerable/dashboard/src";
+ *
+ * Fonts come from the host (next/font): --font-geist-sans and --font-serif.
+ */
+
+/*
+ * Steerable design tokens. Calm and warm on purpose: the people using this run shops,
+ * studios and agencies, not servers. Status colors are soft, never alarming.
+ */
+:root {
+  --bg: #f7f5f0;
+  --surface: #ffffff;
+  --surface-2: #f1eee7;
+  --ink: #1f1d1a;
+  --ink-2: #57524a;
+  --ink-3: #6f6a61;
+  --line: #e7e2d9;
+
+  --accent: #2d6a4f;
+  --accent-hover: #245840;
+  --accent-ink: #ffffff;
+  --accent-soft: #e4efe8;
+
+  --amber: #965a14;
+  --amber-soft: #fbf0dc;
+  --rose: #b4232c;
+  --rose-soft: #fbe7e5;
+  --sky: #2b6cb0;
+  --sky-soft: #e4edf8;
+  --violet: #6b46c1;
+  --violet-soft: #eee8fa;
+
+  --shadow-card: 0 1px 2px rgb(31 29 26 / 0.04), 0 4px 16px rgb(31 29 26 / 0.04);
+  --shadow-lift: 0 2px 4px rgb(31 29 26 / 0.05), 0 12px 32px rgb(31 29 26 / 0.08);
+}
+
+/* Dark: follows the device unless the owner picked a theme (data-theme on <html>, see theme.ts). */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #1d1c1a;
+    --surface: #262422;
+    --surface-2: #302e2a;
+    --ink: #efece6;
+    --ink-2: #bab4aa;
+    --ink-3: #a29c91;
+    --line: #3c3934;
+
+    --accent: #5fb98a;
+    --accent-hover: #74c89b;
+    --accent-ink: #0e1a13;
+    --accent-soft: #21342a;
+
+    --amber: #e0a352;
+    --amber-soft: #352a1a;
+    --rose: #f07a78;
+    --rose-soft: #3a2020;
+    --sky: #7fb2ea;
+    --sky-soft: #1c2a40;
+    --violet: #b79cf2;
+    --violet-soft: #2a2240;
+
+    --shadow-card: 0 1px 2px rgb(0 0 0 / 0.3);
+    --shadow-lift: 0 2px 4px rgb(0 0 0 / 0.3), 0 12px 32px rgb(0 0 0 / 0.35);
+  }
+}
+
+:root[data-theme="dark"] {
+  --bg: #1d1c1a;
+  --surface: #262422;
+  --surface-2: #302e2a;
+  --ink: #efece6;
+  --ink-2: #bab4aa;
+  --ink-3: #a29c91;
+  --line: #3c3934;
+
+  --accent: #5fb98a;
+  --accent-hover: #74c89b;
+  --accent-ink: #0e1a13;
+  --accent-soft: #21342a;
+
+  --amber: #e0a352;
+  --amber-soft: #352a1a;
+  --rose: #f07a78;
+  --rose-soft: #3a2020;
+  --sky: #7fb2ea;
+  --sky-soft: #1c2a40;
+  --violet: #b79cf2;
+  --violet-soft: #2a2240;
+
+  --shadow-card: 0 1px 2px rgb(0 0 0 / 0.3);
+  --shadow-lift: 0 2px 4px rgb(0 0 0 / 0.3), 0 12px 32px rgb(0 0 0 / 0.35);
+}
+
+:root {
+  color-scheme: light;
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+  }
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-ink-3: var(--ink-3);
+  --color-line: var(--line);
+  --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
+  --color-accent-ink: var(--accent-ink);
+  --color-accent-soft: var(--accent-soft);
+  --color-amber: var(--amber);
+  --color-amber-soft: var(--amber-soft);
+  --color-rose: var(--rose);
+  --color-rose-soft: var(--rose-soft);
+  --color-sky: var(--sky);
+  --color-sky-soft: var(--sky-soft);
+  --color-violet: var(--violet);
+  --color-violet-soft: var(--violet-soft);
+
+  --font-sans: var(--font-geist-sans);
+  --font-display: var(--font-serif);
+
+  --shadow-card: var(--shadow-card);
+  --shadow-lift: var(--shadow-lift);
+
+  --animate-rise: rise 0.4s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+html {
+  color-scheme: light dark;
+}
+
+body {
+  background: var(--bg);
+  color: var(--ink);
+}
+
+::selection {
+  background: var(--accent-soft);
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

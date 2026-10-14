@@ -1,0 +1,29 @@
+# Environment & secrets
+.venv
+.env
+.env.*
+!.env.example
+secrets/
+*.pem
+*.key
+credentials*.json
+token*.json
+
+# Runtime output
+logs/*
+!logs/.gitkeep
+.cache/
+.heartbeat.lock
+ops.db*
+library.db*
+drafts/
+files/
+books/
+
+# Python / editors
+__pycache__/
+*.pyc
+.pytest_cache/
+.DS_Store
+.vscode/
+.idea/

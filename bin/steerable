@@ -1,0 +1,677 @@
+#!/usr/bin/env python3
+"""steerable: one command to create, run and check a company run by Claude Code.
+
+    steerable                 chat with your COO (opens Claude Code in the project)
+    steerable setup           create a new company (guided)
+    steerable doctor          find and explain anything that's broken
+    steerable status          heartbeat, runs, spend, tasks
+    steerable --help          everything else
+
+Standard library only, so it runs on any python3 >= 3.10 without a venv. It wraps the
+engine instead of copying it: approvals, status and the brief call the project's own scripts.
+"""
+import argparse
+import getpass
+import hashlib
+import json
+import os
+import re
+import shutil
+import signal
+import subprocess
+import sys
+import time
+from datetime import datetime, timezone
+from pathlib import Path
+
+KIT = Path(__file__).resolve().parent.parent
+CONFIG = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config")) / "steerable" / "config.json"
+SECRET_KEYS = re.compile(r"KEY|TOKEN|PASS|SECRET", re.I)
+
+# ---------- output ----------
+
+_COLOR = sys.stdout.isatty() and not os.environ.get("NO_COLOR")
+
+
+def _c(code: str, text: str) -> str:
+    return f"\033[{code}m{text}\033[0m" if _COLOR else text
+
+
+def bold(t): return _c("1", t)
+def dim(t): return _c("2", t)
+def cyan(t): return _c("36", t)
+def green(t): return _c("32", t)
+def yellow(t): return _c("33", t)
+def red(t): return _c("31", t)
+
+
+def step(msg): print(f"{cyan('→')} {msg}")
+def ok(msg): print(f"{green('✓')} {msg}")
+def warn(msg): print(f"{yellow('!')} {msg}")
+def fail(msg): print(f"{red('✗')} {msg}")
+def hint(msg): print(f"  {dim(msg)}")
+
+
+def die(msg: str, fix: str = "") -> None:
+    fail(msg)
+    if fix:
+        hint(fix)
+    sys.exit(1)
+
+
+def banner() -> None:
+    print(bold(cyan("◆ Steerable")) + dim("  you're the CEO, the system is everything else"))
+
+
+def box(lines: list[str]) -> None:
+    width = max(len(re.sub(r"\033\[[0-9;]*m", "", line)) for line in lines) + 2
+    print(dim("┌" + "─" * width + "┐"))
+    for line in lines:
+        pad = width - len(re.sub(r"\033\[[0-9;]*m", "", line)) - 1
+        print(dim("│") + " " + line + " " * pad + dim("│"))
+    print(dim("└" + "─" * width + "┘"))
+
+
+def ask(question: str, default: str = "") -> str:
+    suffix = f" {dim('[' + default + ']')}" if default else ""
+    try:
+        answer = input(f"{cyan('?')} {question}{suffix} ").strip()
+    except (EOFError, KeyboardInterrupt):
+        print()
+        sys.exit(130)
+    return answer or default
+
+
+def confirm(question: str, default: bool = False) -> bool:
+    answer = ask(question, "Y/n" if default else "y/N").lower()
+    return default if answer in ("y/n", "") else answer.startswith("y")
+
+
+# ---------- project discovery ----------
+
+def slugify(name: str) -> str:
+    """Same rule as setup.sh, so service and folder names match."""
+    return re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")
+
+
+def is_project(p: Path) -> bool:
+    return (p / "tasks.md").exists() and (p / "scripts" / "heartbeat.py").exists()
+
+
+def load_config() -> dict:
+    try:
+        return json.loads(CONFIG.read_text())
+    except (OSError, ValueError):
+        return {}
+
+
+def save_config(cfg: dict) -> None:
+    CONFIG.parent.mkdir(parents=True, exist_ok=True)
+    CONFIG.write_text(json.dumps(cfg, indent=2) + "\n")
+
+
+def find_project(explicit: str | None = None, required: bool = True) -> Path | None:
+    """--project, then the current folder or a parent, then the default from `setup`."""
+    if explicit:
+        p = Path(explicit).expanduser().resolve()
+        if is_project(p):
+            return p
+        die(f"{p} isn't a Steerable company folder.")
+    for p in [Path.cwd(), *Path.cwd().parents]:
+        if is_project(p):
+            return p
+    default = load_config().get("default_project")
+    if default and is_project(Path(default)):
+        return Path(default)
+    if required:
+        die("No company project found here.",
+            "cd into one, pass --project PATH, or create one with: steerable setup")
+    return None
+
+
+def read_env(proj: Path) -> dict:
+    env = {}
+    path = proj / ".env"
+    if path.exists():
+        for line in path.read_text().splitlines():
+            if "=" in line and not line.lstrip().startswith("#"):
+                k, v = line.split("=", 1)
+                env[k.strip()] = v.strip()
+    return env
+
+
+def project_slug(proj: Path) -> str:
+    return slugify(read_env(proj).get("COMPANY_NAME") or proj.name)
+
+
+def venv_python(proj: Path) -> str:
+    py = proj / ".venv" / "bin" / "python"
+    if not py.exists():
+        die("This project has no .venv.", f"Rebuild it: python3 -m venv {proj}/.venv && "
+            f"{proj}/.venv/bin/pip install -r {proj}/requirements.txt")
+    return str(py)
+
+
+def engine(proj: Path, code: str, *args: str, capture: bool = True) -> subprocess.CompletedProcess:
+    """Run a snippet with the project's venv and scripts/ on the path, so the CLI reuses
+    the engine's own functions instead of reimplementing them."""
+    return subprocess.run([venv_python(proj), "-c", f"import sys; sys.path.insert(0, 'scripts')\n{code}", *args],
+                          cwd=proj, capture_output=capture, text=True)
+
+
+# ---------- tasks (same parsing as brief.py) ----------
+
+def task_id(line: str) -> str:
+    return hashlib.sha1(line.encode()).hexdigest()[:8]
+
+
+def open_tasks(proj: Path) -> list[str]:
+    return [line for line in (proj / "tasks.md").read_text().splitlines() if line.startswith("- [ ]")]
+
+
+def approvals(proj: Path) -> list[tuple[str, str]]:
+    return [(task_id(line), line[6:]) for line in open_tasks(proj) if "needs:approval" in line]
+
+
+def clean_task(text: str) -> str:
+    return re.sub(r"\s+", " ", re.sub(r"(@workflow|due|every|paused):\S+|needs:approval|approved", "", text)).strip()
+
+
+# ---------- commands ----------
+
+def cmd_chat(args) -> None:
+    proj = find_project(args.project, required=False)
+    if proj is None:
+        banner()
+        print("\nNo company yet. Create one with:\n")
+        print(f"  {bold('steerable setup')}\n")
+        return
+    if not shutil.which("claude"):
+        die("Claude Code isn't installed.", "Install it: https://claude.com/claude-code, then run steerable again.")
+    os.chdir(proj)
+    os.execvp("claude", ["claude", *args.rest])
+
+
+def cmd_setup(args) -> None:
+    banner()
+    print()
+    for tool in ("python3", "git"):
+        if not shutil.which(tool):
+            die(f"{tool} is missing.", f"Install {tool} with your package manager, then rerun steerable setup.")
+    name = args.name or ask("Company name?")
+    if not name:
+        die("A company name is required.")
+    slug = slugify(name)
+    target = Path(args.dir or ask("Where should it live?", str(Path.home() / "companies" / slug))).expanduser()
+    if target.exists() and any(target.iterdir()):
+        die(f"{target} already exists and isn't empty.", "Pick another folder.")
+
+    step(f"Creating {bold(name)} in {target} " + dim("(about 30 seconds, longer on first run)"))
+    r = subprocess.run([str(KIT / "setup.sh"), str(target), name], capture_output=True, text=True)
+    if r.returncode != 0:
+        print(r.stdout[-2000:], r.stderr[-2000:], sep="\n")
+        die("Setup failed. The output above says why.")
+    ok("Project created, and the heartbeat runs")
+
+    cfg = load_config()
+    cfg["default_project"] = str(target.resolve())
+    save_config(cfg)
+
+    print()
+    print(bold("Keys") + dim("  (Enter skips; set any later with: steerable config set KEY VALUE)"))
+    keys = [("ANTHROPIC_API_KEY", "Anthropic API key for decide() calls", True),
+            ("TELEGRAM_BOT_TOKEN", "Telegram bot token from @BotFather (daily brief, approvals)", True),
+            ("MONTHLY_BUDGET_USD", "Monthly spend cap in USD", False)]
+    for key, label, secret in keys:
+        value = (getpass.getpass(f"{cyan('?')} {label}: ") if secret else ask(f"{label}?", "20")).strip()
+        if value:
+            set_env(target, key, value)
+            ok(f"{key} saved")
+
+    if sys.platform.startswith("linux") and confirm("Start the background services now (heartbeat every 15 min, 09:00 brief)?", True):
+        start_services(target)
+
+    print()
+    box([green("✓ ") + bold(f"{name} is ready"),
+         "",
+         f"Next:  {bold('cd ' + str(target))}",
+         f"       {bold('steerable')}   then say \"start onboarding\"",
+         "",
+         dim("Check anything with: steerable doctor")])
+
+
+def set_env(proj: Path, key: str, value: str) -> None:
+    path = proj / ".env"
+    lines = path.read_text().splitlines() if path.exists() else []
+    for i, line in enumerate(lines):
+        if line.split("=", 1)[0].strip() == key:
+            lines[i] = f"{key}={value}"
+            break
+    else:
+        lines.append(f"{key}={value}")
+    path.write_text("\n".join(lines) + "\n")
+    path.chmod(0o600)
+
+
+def cmd_config(args) -> None:
+    proj = find_project(args.project)
+    env = read_env(proj)
+    if args.action == "set":
+        if not args.key or args.value is None:
+            die("Usage: steerable config set KEY VALUE")
+        set_env(proj, args.key, args.value)
+        ok(f"{args.key} saved")
+        if args.key == "TELEGRAM_BOT_TOKEN":
+            hint(f"Restart the bridge to use it: systemctl --user restart {project_slug(proj)}-bridge")
+            hint("Then link your chat: .venv/bin/python scripts/telegram.py link   (open the link it prints)")
+    elif args.action == "get":
+        if args.key not in env:
+            die(f"{args.key} isn't set.")
+        print(env[args.key])
+    else:
+        for k, v in env.items():
+            shown = (v[:4] + "…" if len(v) > 8 else "set") if v and SECRET_KEYS.search(k) else v
+            print(f"{k:28} {shown if shown else dim('(empty)')}")
+
+
+def cmd_status(args) -> None:
+    proj = find_project(args.project)
+    print(bold(read_env(proj).get("COMPANY_NAME", proj.name)) + dim(f"  {proj}"))
+    subprocess.run([venv_python(proj), "scripts/status.py", "--days", str(args.days)], cwd=proj)
+    waiting = [i for i in load_incidents(proj).values() if i.get("status") == "awaiting_ceo"]
+    if waiting:
+        print(f"Incidents:  {len(waiting)} waiting for you  {dim('(steerable incidents)')}")
+
+
+def cmd_tasks(args) -> None:
+    proj = find_project(args.project)
+    tasks = open_tasks(proj)
+    if not tasks:
+        print("No open tasks.")
+        return
+    pending = approvals(proj)
+    if pending:
+        print(bold("Waiting for your approval"))
+        for n, (_, text) in enumerate(pending, 1):
+            print(f"  {yellow(str(n))}. {clean_task(text)}")
+        hint("steerable approve N  ·  steerable reject N")
+        print()
+    print(bold("Open"))
+    for line in tasks:
+        text = line[6:]
+        if "needs:approval" in text:
+            continue
+        tags = []
+        if m := re.search(r"@workflow:(\S+)", text):
+            tags.append(cyan(m.group(1)))
+        if m := re.search(r"every:(\S+)", text):
+            tags.append(dim(m.group(1)))
+        if m := re.search(r"due:(\S+)", text):
+            tags.append(dim("due " + m.group(1)))
+        if "paused:" in text:
+            tags.append(red("paused"))
+        print(f"  • {clean_task(text)}  {' '.join(tags)}")
+
+
+def cmd_decide(args, approve: bool) -> None:
+    proj = find_project(args.project)
+    pending = approvals(proj)
+    if not pending:
+        die("Nothing is waiting for approval.")
+    pick = args.which
+    match = [p for p in pending if p[0] == pick] or \
+            ([pending[int(pick) - 1]] if pick.isdigit() and 0 < int(pick) <= len(pending) else [])
+    if not match:
+        die(f"No pending approval '{pick}'.", "See the numbers with: steerable tasks")
+    r = engine(proj, "from bridge import set_approval\nprint(set_approval(sys.argv[1], sys.argv[2] == '1') or '')",
+               match[0][0], "1" if approve else "0")
+    if r.returncode != 0 or not r.stdout.strip():
+        errors = (r.stderr or "").strip().splitlines()
+        die("Couldn't update tasks.md.", errors[-1] if errors else "")
+    (ok if approve else warn)(("Approved: " if approve else "Rejected: ") + clean_task(r.stdout.strip()))
+
+
+def load_incidents(proj: Path) -> dict:
+    path = proj / ".cache" / "incidents.json"
+    try:
+        return json.loads(path.read_text())
+    except (OSError, ValueError):
+        return {}
+
+
+def cmd_incidents(args) -> None:
+    proj = find_project(args.project)
+    incidents = load_incidents(proj)
+    if args.id:
+        inc = incidents.get(args.id) or die(f"No incident {args.id}.")
+        if args.action:
+            fn = {"apply": "apply_fix(sys.argv[1])", "discard": "discard_fix(sys.argv[1])",
+                  "close": "resolve(sys.argv[1], 'closed from the CLI') or 'closed'"}[args.action]
+            r = engine(proj, f"import incident\nprint(incident.{fn})", args.id)
+            (ok if r.returncode == 0 else fail)((r.stdout or r.stderr).strip()[-500:])
+            return
+        v = inc.get("verdict") or {}
+        print(bold(inc["summary"]) + dim(f"  {inc['id']} · {inc['status']} · ${inc.get('cost_usd', 0):.2f}"))
+        for label, key in (("What happened", "summary"), ("Root cause", "root_cause"),
+                           ("Fix", "fix_summary"), ("Recommendation", "recommendation")):
+            if v.get(key):
+                print(f"\n{cyan(label)}\n  {v[key]}")
+        if v.get("fix_ready") and inc["status"] != "resolved":
+            hint(f"\nsteerable incidents {inc['id']} apply   ·   … discard")
+        return
+    shown = [i for i in incidents.values() if args.all or i.get("status") != "resolved"]
+    if not shown:
+        ok("No open incidents." + ("" if args.all else dim("  (--all shows resolved ones)")))
+        return
+    colour = {"awaiting_ceo": yellow, "investigating": cyan, "resolved": dim}
+    for inc in sorted(shown, key=lambda i: i.get("opened", ""), reverse=True):
+        status = colour.get(inc["status"], str)(f"{inc['status']:13}")
+        print(f"{inc['id']}  {status} {inc.get('opened', '')[:16]}  {inc['summary']}")
+    hint("Details: steerable incidents ID")
+
+
+def cmd_logs(args) -> None:
+    proj = find_project(args.project)
+    log = proj / "logs" / "runs.jsonl"
+    if not log.exists():
+        print("No runs logged yet.")
+        return
+
+    def show(line: str) -> None:
+        try:
+            e = json.loads(line)
+        except ValueError:
+            return
+        if args.quiet and e.get("status") == "idle":
+            return
+        colour = {"ok": green, "error": red, "quality_failed": yellow, "opened": yellow}.get(e["status"], dim)
+        what = e.get("workflow") or e.get("incident") or e.get("task") or ""
+        cost = f" ${e['cost_usd']:.3f}" if e.get("cost_usd") else ""
+        local = datetime.fromisoformat(e["ts"]).astimezone().strftime("%m-%d %H:%M")
+        print(f"{dim(local)}  {e['script']:10} {colour(e['status']):<16} {what}{dim(cost)}")
+
+    for line in log.read_text().splitlines()[-args.n:]:
+        show(line)
+    if args.follow:
+        with log.open() as f:
+            f.seek(0, 2)
+            try:
+                while True:
+                    line = f.readline()
+                    show(line) if line else time.sleep(1)
+            except KeyboardInterrupt:
+                print()
+
+
+def cmd_run(args) -> None:
+    proj = find_project(args.project)
+    cmd = [venv_python(proj), "scripts/heartbeat.py"] + (["--dry-run"] if args.dry_run else [])
+    step("Running the heartbeat" + (" (dry run)" if args.dry_run else ""))
+    sys.exit(subprocess.run(cmd, cwd=proj).returncode)
+
+
+def cmd_brief(args) -> None:
+    proj = find_project(args.project)
+    r = engine(proj, "from brief import build\nprint(build()[0])")
+    print(r.stdout.strip() if r.returncode == 0 else red(r.stderr.strip()[-800:]))
+    hint("This is a preview. The real one goes to Telegram at 09:00.")
+
+
+def cmd_board(args) -> None:
+    proj = find_project(args.project)
+    r = engine(proj, "import ops_db\nwith ops_db.connect() as con:\n    ops_db.show(con)")
+    out = r.stdout.strip()
+    if r.returncode != 0:
+        die("Couldn't read the mission board.", (r.stderr.strip().splitlines() or [""])[-1])
+    print(out or "The board is empty. Your COO fills it during onboarding (memory/ops_seed.json).")
+
+
+def cmd_workflow(args) -> None:
+    proj = find_project(args.project)
+    name = re.sub(r"[^a-z0-9_]", "_", args.name.lower())
+    dest = proj / "workflows" / f"{name}.py"
+    if dest.exists():
+        die(f"workflows/{name}.py already exists.")
+    shutil.copy(proj / "workflows" / "_template.py", dest)
+    ok(f"Created workflows/{name}.py from the template")
+    hint("Fill in run(), quality_problems() and watch(), test it with:")
+    hint(f"  .venv/bin/python workflows/{name}.py")
+    hint("then schedule it in tasks.md:")
+    hint(f"  - [ ] <what it does>  @workflow:{name}  every:daily  needs:approval")
+
+
+# ---------- services ----------
+
+def _crontab() -> list[str]:
+    r = subprocess.run(["crontab", "-l"], capture_output=True, text=True)
+    return r.stdout.splitlines() if r.returncode == 0 else []
+
+
+def _cron_lines(proj: Path) -> list[str]:
+    return [f'*/15 * * * * cd "{proj}" && .venv/bin/python scripts/heartbeat.py >> logs/cron.log 2>&1',
+            f'0 9 * * * cd "{proj}" && .venv/bin/python scripts/brief.py >> logs/cron.log 2>&1']
+
+
+def _bridge_unit(proj: Path) -> str:
+    return f"{project_slug(proj)}-bridge"
+
+
+def start_services(proj: Path) -> None:
+    if not shutil.which("crontab"):
+        warn("cron isn't available, so the heartbeat won't run on its own.")
+    else:
+        current = _crontab()
+        missing = [line for line in _cron_lines(proj) if line not in current]
+        if missing:
+            subprocess.run(["crontab", "-"], input="\n".join(current + missing) + "\n", text=True, check=True)
+        ok("Heartbeat every 15 min and brief at 09:00 (cron)")
+    if not shutil.which("systemctl"):
+        warn("No systemd here, so the Telegram bridge won't run as a service.")
+        hint(f"Run it by hand instead: cd {proj} && .venv/bin/python scripts/bridge.py")
+        return
+    unit = _bridge_unit(proj)
+    path = Path.home() / ".config" / "systemd" / "user" / f"{unit}.service"
+    if not path.exists():
+        claude_dir = os.path.dirname(shutil.which("claude") or "/usr/bin/claude")
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(f"""[Unit]
+Description={read_env(proj).get('COMPANY_NAME', proj.name)} Telegram bridge
+After=network-online.target
+
+[Service]
+WorkingDirectory={proj}
+ExecStart="{proj}/.venv/bin/python" scripts/bridge.py
+Environment=PATH={claude_dir}:/usr/bin:/bin
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=default.target
+""")
+        subprocess.run(["systemctl", "--user", "daemon-reload"])
+    subprocess.run(["systemctl", "--user", "enable", "--now", unit], capture_output=True)
+    ok(f"Telegram bridge ({unit})" + ("" if read_env(proj).get("TELEGRAM_BOT_TOKEN") else
+                                       dim("  idle until TELEGRAM_BOT_TOKEN is set")))
+
+
+def cmd_start(args) -> None:
+    start_services(find_project(args.project))
+
+
+def cmd_stop(args) -> None:
+    proj = find_project(args.project)
+    current = _crontab()
+    kept = [line for line in current if f'cd "{proj}"' not in line]
+    if len(kept) != len(current):
+        subprocess.run(["crontab", "-"], input="\n".join(kept) + ("\n" if kept else ""), text=True, check=True)
+        ok("Cron jobs removed")
+    if shutil.which("systemctl"):
+        subprocess.run(["systemctl", "--user", "disable", "--now", _bridge_unit(proj)], capture_output=True)
+        ok("Telegram bridge stopped")
+
+
+# ---------- doctor ----------
+
+def cmd_doctor(args) -> None:
+    banner()
+    problems = 0
+
+    def check(good: bool, msg: str, fix: str = "", soft: bool = False, bad: str = "") -> None:
+        nonlocal problems
+        if good:
+            ok(msg)
+        else:
+            (warn if soft else fail)(bad or msg)
+            if fix:
+                hint(fix)
+            problems += 0 if soft else 1
+
+    print(bold("\nSystem"))
+    check(sys.version_info >= (3, 10), f"Python {sys.version.split()[0]}", "Needs Python 3.10 or newer.")
+    check(bool(shutil.which("git")), "git", "Install git with your package manager.", bad="git is missing")
+    check(bool(shutil.which("claude")), "Claude Code", "Install it: https://claude.com/claude-code",
+          bad="Claude Code isn't installed, so there's no COO")
+    check(bool(shutil.which("crontab")), "cron", "Install cron, or nothing runs on its own.", soft=True,
+          bad="cron is missing")
+
+    proj = find_project(args.project, required=False)
+    if proj is None:
+        print()
+        warn("No company project found.")
+        hint("Create one: steerable setup")
+        sys.exit(1)
+
+    print(bold(f"\nProject  ") + dim(str(proj)))
+    py = proj / ".venv" / "bin" / "python"
+    deps = py.exists() and subprocess.run([str(py), "-c", "import anthropic, dotenv"],
+                                         capture_output=True).returncode == 0
+    check(deps, "Python environment (.venv)", bad="Python environment (.venv) is broken", fix=
+          f"Rebuild: {proj}/.venv/bin/pip install -r {proj}/requirements.txt")
+    env_file = proj / ".env"
+    check(env_file.exists(), ".env exists", "Copy .env.example to .env")
+    if env_file.exists():
+        check(oct(env_file.stat().st_mode)[-3:] == "600", ".env is private (600)", f"chmod 600 {env_file}", soft=True)
+    env = read_env(proj)
+    if env.get("DECIDE_BACKEND") == "jev":
+        check(bool(env.get("JEV_API_KEY")), "Jev API key set", "steerable config set JEV_API_KEY <key>", soft=True,
+              bad="DECIDE_BACKEND=jev but no JEV_API_KEY, so decide() falls back to Haiku")
+    check(bool(env.get("ANTHROPIC_API_KEY")) or env.get("DECIDE_BACKEND") == "rules", "Anthropic API key set",
+          "steerable config set ANTHROPIC_API_KEY sk-ant-...", soft=True,
+          bad="No Anthropic API key, so decide() calls will fail")
+    check(bool(env.get("TELEGRAM_BOT_TOKEN")), "Telegram connected",
+          "steerable config set TELEGRAM_BOT_TOKEN <token from @BotFather>", soft=True,
+          bad="Telegram not connected, so no brief or approve buttons")
+    budget = env.get("MONTHLY_BUDGET_USD") or "20"
+    check(budget.replace(".", "", 1).isdigit(), f"Budget cap ${budget}/month" + ("" if env.get("MONTHLY_BUDGET_USD")
+          else dim("  (default)")), "steerable config set MONTHLY_BUDGET_USD 20",
+          bad=f"MONTHLY_BUDGET_USD isn't a number: {budget}")
+
+    print(bold("\nRunning"))
+    crons = [line for line in _crontab() if f'cd "{proj}"' in line]
+    check(len(crons) >= 2, "Heartbeat and brief scheduled (cron)", "steerable start",
+          bad="Nothing scheduled, so the company doesn't run on its own")
+    last = None
+    log = proj / "logs" / "runs.jsonl"
+    if log.exists():
+        for line in reversed(log.read_text().splitlines()):
+            if '"script": "heartbeat"' in line:
+                last = datetime.fromisoformat(json.loads(line)["ts"])
+                break
+    if last:
+        mins = int((datetime.now(timezone.utc) - last).total_seconds() // 60)
+        check(mins <= 30, f"Last heartbeat {mins} min ago", "Cron isn't firing. Check: crontab -l", soft=not crons)
+    else:
+        check(False, "", "Try one now: steerable run", soft=True, bad="No heartbeat has run yet")
+    if shutil.which("systemctl") and env.get("TELEGRAM_BOT_TOKEN"):
+        active = subprocess.run(["systemctl", "--user", "is-active", _bridge_unit(proj)],
+                                capture_output=True, text=True).stdout.strip() == "active"
+        check(active, "Telegram bridge running", f"steerable start   (logs: journalctl --user -u {_bridge_unit(proj)})",
+              bad="Telegram bridge isn't running")
+    waiting = [i for i in load_incidents(proj).values() if i.get("status") == "awaiting_ceo"]
+    check(not waiting, "No incidents waiting for you", "See them: steerable incidents", soft=True,
+          bad=f"{len(waiting)} incident(s) waiting for you")
+    paused = [t for t in open_tasks(proj) if "paused:" in t]
+    check(not paused, "No paused workflows", "See them: steerable tasks", soft=True,
+          bad=f"{len(paused)} workflow(s) paused after a failure")
+
+    print()
+    if problems:
+        fail(f"{problems} problem(s) to fix. Each has a fix above.")
+        sys.exit(1)
+    ok(bold("All good."))
+
+
+def cmd_update(args) -> None:
+    if not (KIT / ".git").exists():
+        die("This kit isn't a git checkout, so it can't update itself.", "Reinstall with install.sh.")
+    step("Updating Steerable")
+    r = subprocess.run(["git", "-C", str(KIT), "pull", "--ff-only"], capture_output=True, text=True)
+    if r.returncode != 0:
+        die("Update failed.", (r.stderr or r.stdout).strip().splitlines()[-1])
+    ok(r.stdout.strip().splitlines()[-1] if r.stdout.strip() else "Up to date")
+    hint("New companies get the update. Existing ones keep their own copy of the engine.")
+
+
+# ---------- entry ----------
+
+def main() -> None:
+    sys.stdout.reconfigure(line_buffering=True)  # keep our lines in order with subprocess output
+    signal.signal(signal.SIGPIPE, signal.SIG_DFL)  # `steerable logs | head` exits quietly
+    p = argparse.ArgumentParser(prog="steerable", description="Run a company with Claude Code as your COO.",
+                                epilog="With no command, opens a chat with your COO.")
+    p.add_argument("-C", "--project", metavar="PATH", help="company folder (default: here, or the one from setup)")
+    sub = p.add_subparsers(dest="cmd", metavar="COMMAND")
+
+    def add(name, fn, help_):
+        sp = sub.add_parser(name, help=help_, description=help_)
+        sp.set_defaults(fn=fn)
+        return sp
+
+    s = add("setup", cmd_setup, "create a new company (guided)")
+    s.add_argument("name", nargs="?")
+    s.add_argument("--dir")
+    add("doctor", cmd_doctor, "diagnose problems and how to fix them")
+    s = add("status", cmd_status, "heartbeat, runs, spend and tasks")
+    s.add_argument("--days", type=int, default=7)
+    add("tasks", cmd_tasks, "open tasks and approvals")
+    s = add("approve", lambda a: cmd_decide(a, True), "approve a waiting task (number from `tasks`)")
+    s.add_argument("which")
+    s = add("reject", lambda a: cmd_decide(a, False), "reject a waiting task")
+    s.add_argument("which")
+    s = add("incidents", cmd_incidents, "list incidents, or show/apply/discard/close one")
+    s.add_argument("id", nargs="?")
+    s.add_argument("action", nargs="?", choices=["apply", "discard", "close"])
+    s.add_argument("--all", action="store_true", help="include resolved")
+    s = add("logs", cmd_logs, "recent runs and costs")
+    s.add_argument("-n", type=int, default=20)
+    s.add_argument("-f", "--follow", action="store_true")
+    s.add_argument("-q", "--quiet", action="store_true", help="hide idle heartbeats")
+    s = add("run", cmd_run, "run the heartbeat once now")
+    s.add_argument("--dry-run", action="store_true")
+    add("brief", cmd_brief, "preview today's brief")
+    add("board", cmd_board, "goals, missions and their status")
+    s = add("config", cmd_config, "show or change settings in .env")
+    s.add_argument("action", nargs="?", choices=["list", "get", "set"], default="list")
+    s.add_argument("key", nargs="?")
+    s.add_argument("value", nargs="?")
+    s = add("workflow", cmd_workflow, "start a new workflow from the template")
+    s.add_argument("name")
+    add("start", cmd_start, "start background services (cron, Telegram bridge)")
+    add("stop", cmd_stop, "stop background services")
+    add("update", cmd_update, "update Steerable")
+    add("version", lambda a: print(subprocess.run(["git", "-C", str(KIT), "describe", "--always", "--dirty"],
+                                                  capture_output=True, text=True).stdout.strip() or "unknown"),
+        "print the version")
+
+    args, rest = p.parse_known_args()
+    if args.cmd is None:
+        args.rest = rest
+        cmd_chat(args)
+    elif rest:
+        p.error(f"unrecognized arguments: {' '.join(rest)}")
+    else:
+        args.fn(args)
+
+
+if __name__ == "__main__":
+    main()

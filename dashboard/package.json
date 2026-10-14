@@ -1,0 +1,82 @@
+{
+  "name": "@steerable/dashboard",
+  "version": "0.1.0",
+  "description": "The Steerable owner's dashboard: Today, Decisions, Timeline, Work, Goals and Chat, on top of the engine's agent API. A library (src/) and, in this folder, the self-hosted app that uses it.",
+  "license": "AGPL-3.0-only",
+  "type": "module",
+  "private": false,
+  "files": [
+    "src",
+    "extension",
+    "theme.css",
+    "README.md"
+  ],
+  "exports": {
+    "./theme.css": "./theme.css",
+    "./host": "./src/host.ts",
+    "./format": "./src/format.ts",
+    "./backend/types": "./src/backend/types.ts",
+    "./backend/agent": "./src/backend/agent.ts",
+    "./backend/mock": "./src/backend/mock.ts",
+    "./ui": "./src/ui.tsx",
+    "./shell": "./src/shell.tsx",
+    "./logo": "./src/logo.tsx",
+    "./nav": "./src/nav.tsx",
+    "./decision-card": "./src/decision-card.tsx",
+    "./timeline": "./src/timeline.tsx",
+    "./work-bits": "./src/work-bits.tsx",
+    "./goal-bits": "./src/goal-bits.tsx",
+    "./chat": "./src/chat.tsx",
+    "./markdown": "./src/markdown.tsx",
+    "./live-login": "./src/live-login.tsx",
+    "./file-routes": "./src/file-routes.ts",
+    "./chat-routes": "./src/chat-routes.ts",
+    "./run-routes": "./src/run-routes.ts",
+    "./trace-routes": "./src/trace-routes.ts",
+    "./library-routes": "./src/library-routes.ts",
+    "./run-changes": "./src/run-changes.tsx",
+    "./trace-viewer": "./src/trace-viewer.tsx",
+    "./extension-zip": "./src/extension-zip.ts",
+    "./extension-card": "./src/extension-card.tsx",
+    "./poll": "./src/poll.tsx",
+    "./onboarding-kickoff": "./src/onboarding-kickoff.tsx",
+    "./error": "./src/error.tsx",
+    "./theme": "./src/theme.ts",
+    "./theme-toggle": "./src/theme-toggle.tsx",
+    "./screens/*": "./src/screens/*.tsx"
+  },
+  "scripts": {
+    "dev": "next dev -p 3100",
+    "build": "next build",
+    "start": "next start -p 3100",
+    "lint": "eslint",
+    "typecheck": "tsc --noEmit",
+    "extension:pack": "node scripts/pack-extension.mjs",
+    "extension:test": "node --test scripts/extension.test.mjs"
+  },
+  "peerDependencies": {
+    "lucide-react": ">=1.50",
+    "next": ">=16.4",
+    "react": ">=19.3",
+    "server-only": "*"
+  },
+  "devDependencies": {
+    "@tailwindcss/turbopack": "^4",
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "eslint": "^9",
+    "eslint-config-next": "16.4.0",
+    "lucide-react": "^1.52.0",
+    "next": "16.4.0",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "server-only": "^0.0.1",
+    "tailwindcss": "^4",
+    "typescript": "^5"
+  },
+  "dependencies": {
+    "react-markdown": "^10.1.0",
+    "remark-gfm": "^4.0.1"
+  }
+}

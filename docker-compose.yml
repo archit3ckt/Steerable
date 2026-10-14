@@ -1,0 +1,73 @@
+# Steerable, self-hosted with Docker: your company's engine (the COO, its routines, memory and
+# history) and your dashboard. Settings come from .env next to this file (see .env.example,
+# or run get.sh, which writes it for you).
+#
+#   docker compose up -d          start (pulls the images; add --build to build them here)
+#   docker compose pull && docker compose up -d     update
+#   docker compose logs -f engine                   see what the COO is doing
+#
+# Steerable Cloud runs this same engine image, one per company.
+name: steerable
+
+services:
+  engine:
+    image: ${STEERABLE_ENGINE_IMAGE:-ghcr.io/archit3ckt/steerable-engine:latest}
+    build:
+      context: .
+      dockerfile: container/Dockerfile
+      args:
+        ENGINE_VERSION: ${ENGINE_VERSION:-local}
+    restart: unless-stopped
+    environment:
+      COMPANY_NAME: ${COMPANY_NAME:?Set COMPANY_NAME in .env}
+      # Your Anthropic API key. Or leave it empty and sign in with your Claude account once:
+      #   docker compose exec -it engine claude      (then /login)
+      # Connected to Steerable (STEERABLE_KEY below), its key and gateway take their place.
+      ANTHROPIC_API_KEY: ${STEERABLE_KEY:-${ANTHROPIC_API_KEY:-}}
+      ANTHROPIC_BASE_URL: ${STEERABLE_URL:-${ANTHROPIC_BASE_URL:-}}
+      STEERABLE_GATEWAY_URL: ${STEERABLE_URL:-}
+      MONTHLY_BUDGET_USD: ${MONTHLY_BUDGET_USD:-20}
+      DECIDE_BACKEND: ${DECIDE_BACKEND:-}   # empty: Jev when it has a key, else Haiku
+      JEV_API_KEY: ${JEV_API_KEY:-}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-465}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASS: ${SMTP_PASS:-}
+      ALERT_TO: ${ALERT_TO:-}
+      TZ: ${TZ:-UTC}
+      BROWSER_LOCALE: ${BROWSER_LOCALE:-en-US}
+      # Optional: connect to Steerable Cloud instead of using your own key: AI included in your
+      # plan, your connected accounts (Gmail, Calendar, Stripe...) and approvals. Both come from
+      # the "Your server" page of your Steerable account.
+      STEERABLE_URL: ${STEERABLE_URL:-}
+      STEERABLE_KEY: ${STEERABLE_KEY:-}
+      STEERABLE_SHARED_DIR: /shared
+    volumes:
+      - company:/company
+      - shared:/shared
+    # The agent API (8787) is reachable only by the dashboard, on this compose network.
+
+  dashboard:
+    image: ${STEERABLE_DASHBOARD_IMAGE:-ghcr.io/archit3ckt/steerable-dashboard:latest}
+    build:
+      context: dashboard
+    restart: unless-stopped
+    depends_on: [engine]
+    environment:
+      DASHBOARD_PASSWORD: ${DASHBOARD_PASSWORD:?Set DASHBOARD_PASSWORD in .env (8+ characters)}
+      AGENT_API_URL: http://engine:8787
+      AGENT_API_TOKEN_FILE: /shared/agent-token
+      COMPANY_NAME: ${COMPANY_NAME}
+      COO_NAME: ${COO_NAME:-Juno}
+      OWNER_NAME: ${OWNER_NAME:-}
+      TZ: ${TZ:-UTC}
+    volumes:
+      - shared:/shared:ro
+    ports:
+      # Only this machine by default. To open it to your network: DASHBOARD_BIND=0.0.0.0
+      - ${DASHBOARD_BIND:-127.0.0.1}:${DASHBOARD_PORT:-3100}:3100
+
+volumes:
+  company:   # your company folder: memory, routines, tasks, history, the Claude session
+  shared:    # the engine's token for the dashboard

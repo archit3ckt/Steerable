@@ -1,0 +1,44 @@
+{
+  "manifest_version": 3,
+  "name": "Steerable: use my login",
+  "short_name": "Steerable",
+  "version": "0.2.0",
+  "description": "Lets your Steerable COO use a site with the login you already have in this browser. Only the sites you switch on, sent only to your own Steerable.",
+  "icons": {
+    "16": "icons/16.png",
+    "48": "icons/48.png",
+    "128": "icons/128.png"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Steerable"
+  },
+  "background": {
+    "service_worker": "background.js",
+    "scripts": [
+      "background.js"
+    ],
+    "type": "module"
+  },
+  "permissions": [
+    "cookies",
+    "storage",
+    "alarms",
+    "activeTab"
+  ],
+  "optional_host_permissions": [
+    "https://*/*",
+    "http://*/*"
+  ],
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "use-my-login@steerable",
+      "strict_min_version": "128.0",
+      "data_collection_permissions": {
+        "required": [
+          "authenticationInfo"
+        ]
+      }
+    }
+  }
+}
