@@ -850,7 +850,9 @@ mcp_call("notion", "search", {})
             env = {k: v for k, v in os.environ.items() if k != "STEERABLE_CONTEXT"}
             subprocess.run([sys.executable, "-c", script], cwd=self.root, check=True, capture_output=True,
                            env={**env, **self.gateway_env, **extra})
-            marks = {c["headers"].get("X-Steerable-Context") for c in FakeGateway.calls}
+            # Service calls only: a chat turn's check of the Goals page may still be asking Jev.
+            marks = {c["headers"].get("X-Steerable-Context") for c in FakeGateway.calls
+                     if not c["path"].startswith(("/jev", "/budget"))}
             self.assertEqual(marks, {"routine"} if context else {None})
 
     def test_22_questions_with_a_pick(self):
