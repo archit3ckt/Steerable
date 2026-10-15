@@ -2,7 +2,7 @@
 
 import { Suspense, type ReactNode } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { History, Inbox, KeyRound, ListChecks, MessageCircle, Plug, Sun, Table2, Target } from "lucide-react";
 import { cx } from "./ui";
 
@@ -57,7 +57,10 @@ export function WideMode() {
 
 function WideMarker() {
   const pathname = usePathname();
-  return WIDE.some((p) => pathname === p || pathname.startsWith(`${p}/`)) ? <span data-wide hidden /> : null;
+  const params = useSearchParams();
+  // The chat is wide while it shows a plan beside it (?open=, chat-artifacts.tsx).
+  const wide = WIDE.some((p) => pathname === p || pathname.startsWith(`${p}/`)) || (pathname === "/chat" && params.has("open"));
+  return wide ? <span data-wide hidden /> : null;
 }
 
 /** The main pages as icons only, for pages that bring their own sidebar (the library). */

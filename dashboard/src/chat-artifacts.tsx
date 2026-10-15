@@ -2,7 +2,8 @@
 
 import { ChevronRight, FileText, Loader2, X } from "lucide-react";
 import Link from "next/link";
-import { useEffect, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { ChatArtifacts as Artifacts, PlanVersionDetail } from "./backend/types";
 import { Markdown } from "./markdown";
 import { PlanChanges, withoutTitle } from "./plan-text";
@@ -10,6 +11,38 @@ import { RunChanges } from "./run-changes";
 import { cx } from "./ui";
 
 type Opened = { id: string; version: number };
+
+/** What's open beside the chat, from the address (?open=plan:<id>:<version>), so Back closes it. */
+function parseOpen(value: string | null): Opened | null {
+  const m = value?.match(/^plan:(pl[0-9a-f]{4,20}):(\d{1,6})$/);
+  return m ? { id: m[1], version: Number(m[2]) } : null;
+}
+
+function setOpen(opened: Opened | null) {
+  const params = new URLSearchParams(window.location.search);
+  if (opened) params.set("open", `plan:${opened.id}:${opened.version}`);
+  else params.delete("open");
+  const qs = params.toString();
+  window.history.pushState(null, "", qs ? `?${qs}` : window.location.pathname);
+}
+
+/**
+ * The chat page, split when a reply's plan is open: the conversation on the left and the plan beside it
+ * at full height, like artifacts (the shell goes wide meanwhile: nav.tsx WideMarker). On a phone the plan
+ * covers the screen. Without plansUrl, cards link to the Library instead.
+ */
+export function ChatSplit({ plansUrl, children }: { plansUrl?: string; children: ReactNode }) {
+  const opened = parseOpen(useSearchParams().get("open"));
+  if (!opened || !plansUrl) return <div className="mx-auto max-w-3xl">{children}</div>;
+  return (
+    <div className="lg:-mt-14 lg:-mr-12 lg:-mb-16 lg:flex lg:items-start">
+      <div className="mx-auto w-full max-w-3xl min-w-0 lg:mx-0 lg:w-[min(44rem,45%)] lg:max-w-none lg:shrink-0 lg:pt-14 lg:pr-10 lg:pb-16">
+        {children}
+      </div>
+      <PlanPane key={`${opened.id}:${opened.version}`} url={plansUrl} opened={opened} onClose={() => setOpen(null)} />
+    </div>
+  );
+}
 type Loaded = { id: string; title: string; current: number; version: PlanVersionDetail };
 
 /**
@@ -18,7 +51,7 @@ type Loaded = { id: string; title: string; current: number; version: PlanVersion
  * Library's own plans and tables, not copies.
  */
 export function ChatArtifacts({ artifacts, plansUrl, changesUrl }: { artifacts: Artifacts; plansUrl?: string; changesUrl?: string }) {
-  const [open, setOpen] = useState<Opened | null>(null);
+  const open = parseOpen(useSearchParams().get("open"));
   const plans = artifacts.plans ?? [];
   const changes = artifacts.changes ?? [];
   if (!plans.length && !changes.length) return null;
@@ -42,9 +75,13 @@ export function ChatArtifacts({ artifacts, plansUrl, changesUrl }: { artifacts: 
             <ChevronRight className="size-4 shrink-0 text-ink-3" aria-hidden />
           </>
         );
-        const card = "flex w-full max-w-md items-center gap-3 rounded-2xl border border-line bg-surface px-3 py-2.5 text-left text-sm transition-colors hover:border-accent";
+        const shown = open?.id === p.id && open.version === p.version;
+        const card = cx(
+          "flex w-full max-w-md items-center gap-3 rounded-2xl border bg-surface px-3 py-2.5 text-left text-sm transition-colors hover:border-accent",
+          shown ? "border-accent" : "border-line",
+        );
         return plansUrl ? (
-          <button key={p.id} type="button" onClick={() => setOpen({ id: p.id, version: p.version })} className={card}>
+          <button key={p.id} type="button" aria-pressed={shown} onClick={() => setOpen(shown ? null : { id: p.id, version: p.version })} className={card}>
             {inner}
           </button>
         ) : (
@@ -54,13 +91,12 @@ export function ChatArtifacts({ artifacts, plansUrl, changesUrl }: { artifacts: 
         );
       })}
       {changes.length > 0 && <RunChanges run={artifacts.run} changes={changes} url={changesUrl} />}
-      {open && plansUrl && <PlanPanel url={plansUrl} opened={open} onClose={() => setOpen(null)} />}
     </div>
   );
 }
 
 /** A plan beside the chat (the whole screen on a phone): the version a reply saved, and what it changed. */
-function PlanPanel({ url, opened, onClose }: { url: string; opened: Opened; onClose: () => void }) {
+function PlanPane({ url, opened, onClose }: { url: string; opened: Opened; onClose: () => void }) {
   const [data, setData] = useState<Loaded | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState<"plan" | "changes">("plan");
@@ -91,9 +127,10 @@ function PlanPanel({ url, opened, onClose }: { url: string; opened: Opened; onCl
   const v = data?.version;
   const latest = data && v && v.n === data.current;
   return (
-    <div className="fixed inset-0 z-50 flex justify-end">
-      <button type="button" aria-label="Close" tabIndex={-1} onClick={onClose} className="absolute inset-0 bg-ink/20 backdrop-blur-[1px]" />
-      <aside role="dialog" aria-modal="true" aria-label={data?.title ?? "Plan"} className="relative flex h-full w-full max-w-2xl flex-col border-l border-line bg-bg shadow-lift">
+    <aside
+      aria-label={data?.title ?? "Plan"}
+      className="fixed inset-0 z-50 flex flex-col bg-bg lg:sticky lg:top-0 lg:z-0 lg:h-dvh lg:min-w-0 lg:flex-1 lg:border-l lg:border-line"
+    >
         <header className="flex items-start gap-3 border-b border-line px-5 py-4 sm:px-6">
           <div className="min-w-0 flex-1">
             <p className="inline-flex items-center gap-1.5 text-xs text-accent">
@@ -155,7 +192,6 @@ function PlanPanel({ url, opened, onClose }: { url: string; opened: Opened; onCl
             Open in Library <ChevronRight className="size-4" aria-hidden />
           </Link>
         </footer>
-      </aside>
-    </div>
+    </aside>
   );
 }
