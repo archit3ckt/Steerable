@@ -59,6 +59,8 @@ async function Conversation({ host, searchParams }: { host: DashboardHost; searc
           newConversation={host.actions.newConversation}
           activityUrl={host.chatActivityUrl}
           filesUrl={host.chatFilesUrl}
+          plansUrl={host.plansUrl}
+          changesUrl={host.runChangesUrl}
           cooName={company.cooName}
         />
       )}

@@ -1393,7 +1393,8 @@ def _message(e: dict) -> dict:
     text), so it stays the same however much history is around it."""
     return {"id": hashlib.sha1(f"{e['ts']}|{e['from']}|{(e.get('text') or '')[:200]}".encode()).hexdigest()[:12],
             "from": e["from"], "text": e.get("text") or "", "at": e["ts"],
-            **({"steps": e["steps"]} if e.get("steps") else {}), **({"files": e["files"]} if e.get("files") else {})}
+            **({"steps": e["steps"]} if e.get("steps") else {}), **({"files": e["files"]} if e.get("files") else {}),
+            **({"artifacts": e["artifacts"]} if e.get("artifacts") else {})}
 
 
 def _newest_first(path: Path = None, chunk: int = 1 << 16):

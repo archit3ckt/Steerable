@@ -46,6 +46,11 @@ export type DashboardHost = {
    */
   runChangesUrl?: string;
   /**
+   * A route serving a plan's version to the chat (GET ?id=<plan>&v=<version>; body in plan-routes.ts):
+   * the plans a reply saved open beside the chat, like artifacts.
+   */
+  plansUrl?: string;
+  /**
    * A GET route for practice and watched runs (body in the package's trace-routes.ts): ?id=<trace>
    * answers the backend's trace() as JSON, &shot=<n>.jpg a picture from it. With it, decisions and
    * routine pages show exactly what a routine would do, or did, step by step.

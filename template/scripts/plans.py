@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import argparse
 import difflib
+import os
 import re
 import secrets
 import sys
@@ -66,6 +67,8 @@ class _Conn:
         self.cm = library.connect()
         con = self.cm.__enter__()
         con.executescript(SCHEMA)
+        if "run" not in {r[1] for r in con.execute("PRAGMA table_info(plan_versions)")}:
+            con.execute("ALTER TABLE plan_versions ADD COLUMN run TEXT")  # the chat turn or routine run that saved it
         return con
 
     def __exit__(self, *exc):
@@ -154,8 +157,8 @@ def _clean(text: str) -> str:
 def _add_version(con, plan_id: str, text: str, note: str, who: str, restored_from: int | None = None) -> int:
     n = con.execute("SELECT COALESCE(MAX(n), 0) + 1 FROM plan_versions WHERE plan_id = ?", (plan_id,)).fetchone()[0]
     at = now_iso()
-    con.execute("INSERT INTO plan_versions (plan_id, n, body, note, who, at, restored_from) VALUES (?, ?, ?, ?, ?, ?, ?)",
-                (plan_id, n, text, note.strip()[:500], who, at, restored_from))
+    con.execute("INSERT INTO plan_versions (plan_id, n, body, note, who, at, restored_from, run) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                (plan_id, n, text, note.strip()[:500], who, at, restored_from, os.environ.get("STEERABLE_RUN") or None))
     con.execute("UPDATE plans SET version = ?, updated = ? WHERE id = ?", (n, at, plan_id))
     return n
 
@@ -226,6 +229,20 @@ def changes(old: str, new: str, context: int = 2) -> list[dict]:
         shown_to = group[-1][2]
     if out and shown_to < len(a):
         out.append({"op": "skip", "count": len(a) - shown_to})
+    return out
+
+
+def run_plans(run: str) -> list[dict]:
+    """The plans a chat turn or routine run saved: [{"id", "title", "version", "note", "created"}], its last version of each."""
+    if not run:
+        return []
+    with connect() as con:
+        rows = con.execute("""SELECT p.id, p.title, MAX(v.n) AS n, MIN(v.n) AS first FROM plan_versions v JOIN plans p ON p.id = v.plan_id
+                              WHERE v.run = ? AND p.archived = 0 GROUP BY p.id ORDER BY p.title""", (run,)).fetchall()
+        out = []
+        for r in rows:
+            note = con.execute("SELECT note FROM plan_versions WHERE plan_id = ? AND n = ?", (r["id"], r["n"])).fetchone()["note"]
+            out.append({"id": r["id"], "title": r["title"], "version": r["n"], "note": note, "created": r["first"] == 1})
     return out
 
 

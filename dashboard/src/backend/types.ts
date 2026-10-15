@@ -455,6 +455,19 @@ export type ChatMessage = {
   steps?: ChatStep[];
   /** Pictures and files the owner attached (the engine's scripts/files.py keeps them). */
   files?: ChatFile[];
+  /** What the COO made or changed in the library while writing this reply, shown with it. */
+  artifacts?: ChatArtifacts;
+};
+
+/**
+ * A chat turn's "artifacts": the same plans and tables as in the Library, not copies. `run` names the
+ * turn for runChanges(); `changes`: rows it added, changed or archived per table; `plans`: the plans
+ * it saved, at the version it saved (created: it wrote the first version).
+ */
+export type ChatArtifacts = {
+  run: string;
+  changes?: TableChanges[];
+  plans?: { id: string; title: string; version: number; note: string; created?: boolean }[];
 };
 
 /**

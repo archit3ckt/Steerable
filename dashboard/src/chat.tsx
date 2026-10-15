@@ -6,6 +6,7 @@ import { ArrowDown, ArrowUp, Check, ChevronRight, FileText, Loader2, MessageSqua
 import type { ChatActivity, ChatFile, ChatMessage, ChatPage, ChatStep } from "./backend/types";
 import { dayLabel } from "./format";
 import type { DashboardActions } from "./host";
+import { ChatArtifacts } from "./chat-artifacts";
 import { Markdown } from "./markdown";
 import { CooAvatar, cx } from "./ui";
 
@@ -41,6 +42,8 @@ export function Chat({
   newConversation,
   activityUrl,
   filesUrl,
+  plansUrl,
+  changesUrl,
 }: {
   /** The first page: the latest messages, or those around focusId. */
   messages: ChatMessage[];
@@ -63,6 +66,9 @@ export function Chat({
   activityUrl?: string;
   /** The host's chatFilesUrl: attach pictures and files (and show the ones sent). */
   filesUrl?: string;
+  /** The host's plansUrl and runChangesUrl: what a reply made in the library opens from under it. */
+  plansUrl?: string;
+  changesUrl?: string;
 }) {
   const [list, setList] = useState(messages);
   const [earlier, setEarlier] = useState(hasEarlier);
@@ -337,6 +343,7 @@ export function Chat({
                   <div className="rounded-2xl rounded-tl-md border border-line bg-surface px-4 py-2.5 leading-relaxed break-words shadow-card">
                     <Markdown text={m.text} />
                   </div>
+                  {m.artifacts && <ChatArtifacts artifacts={m.artifacts} plansUrl={plansUrl} changesUrl={changesUrl} />}
                 </div>
               </>
             )}

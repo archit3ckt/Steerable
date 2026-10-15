@@ -111,10 +111,13 @@ def system_prompt(channel: str) -> str:
     )
 
 
-def _log_chat(sender: str, text: str, steps: list | None = None, attached: list | None = None) -> None:
+def _log_chat(sender: str, text: str, steps: list | None = None, attached: list | None = None,
+              artifacts: dict | None = None) -> None:
     entry = {"ts": now_iso(), "from": sender, "text": text}
     if steps:
         entry["steps"] = steps
+    if artifacts:
+        entry["artifacts"] = artifacts
     if attached:
         entry["files"] = [{k: a[k] for k in ("id", "name", "kind", "size")} for a in attached]
     with CHAT_LOG.open("a") as f:
@@ -270,10 +273,19 @@ def converse(text: str, channel: str = "Telegram", show_prompt: bool = True, att
                 guard.check_and_commit("chat")
             except Exception as e:  # noqa: BLE001 - never break the chat over it
                 log_run("guard", "error", error=repr(e)[:300])
-            if changes := library_counts(run):
+            changes, saved = library_counts(run), []
+            if changes:
                 log_run("bridge", "library", run=run, changes=changes)
                 record_event(f"Updated the library: {counts_words(changes)}", who="COO", ref=run)
-    _log_chat("coo", reply, steps)
+            try:
+                import plans
+
+                saved = plans.run_plans(run)
+            except Exception as e:  # noqa: BLE001 - never break the chat over it
+                log_run("bridge", "error", error=repr(e)[:300])
+    # What the turn made or changed in the library, shown with the reply (the chat's "artifacts").
+    artifacts = {"run": run, **({"changes": changes} if changes else {}), **({"plans": saved} if saved else {})}
+    _log_chat("coo", reply, steps, artifacts=artifacts if changes or saved else None)
     if show_prompt and text:
         # Did this turn finish a project on the Goals page? A cheap check (Jev), in the background.
         import threading
