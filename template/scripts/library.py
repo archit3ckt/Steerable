@@ -148,7 +148,9 @@ def who() -> str:
 
 
 def _id(prefix: str) -> str:
-    return f"{prefix}_{secrets.token_hex(4)}"
+    # 64 random bits: 32 clashed about once in 20 tables of 20,000 rows (the insert then failed).
+    # Older, shorter ids stay valid.
+    return f"{prefix}_{secrets.token_hex(8)}"
 
 
 def _dry() -> bool:

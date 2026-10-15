@@ -47,7 +47,8 @@ def last_day_runs() -> list[dict]:
 
 
 def build() -> tuple[str, list]:
-    runs = [r for r in last_day_runs() if r.get("workflow")]
+    # The owner's routines only: the engine's own jobs (learning, upkeep) aren't news.
+    runs = [r for r in last_day_runs() if r.get("workflow") and not r.get("system") and r["workflow"] not in CORE_WORKFLOWS]
     ok = sorted({r["workflow"] for r in runs if r["status"] == "ok"})
     failed = sorted({r["workflow"] for r in runs if r["status"] == "error"} - set(ok))
     queued = json.loads(BRIEF_QUEUE.read_text()) if BRIEF_QUEUE.exists() else []

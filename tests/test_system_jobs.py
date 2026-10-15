@@ -68,6 +68,15 @@ class SystemJobsTest(unittest.TestCase):
         self.assertEqual(shown.returncode, 0, shown.stderr)
         seen = json.loads(shown.stdout)
         self.assertEqual((seen["d"], seen["r"], seen["h"]["state"]), ([], [], "good"))
+        # Nor are they news: today's summary and the morning brief name the owner's routines only.
+        said = self.py("import json, agent_api, brief\nprint(json.dumps([agent_api.overview(), brief.build()[0]]))")
+        self.assertEqual(said.returncode, 0, said.stderr)
+        overview, morning = json.loads(said.stdout)
+        for text in (json.dumps(overview), morning):
+            self.assertNotIn("Learn", text)
+            self.assertNotIn("Curate", text)
+            self.assertNotIn("curate_skills", text)
+        self.assertEqual(overview["stats"]["doneThisWeek"], 0)  # the engine's own runs aren't work done for the owner
 
         # Neither runs again today; learn is due again tomorrow, and the failed one is retried then.
         before = len(self.runs())

@@ -1346,7 +1346,9 @@ def overview() -> dict:
         health = {"state": "good", "summary": "Everything's running smoothly"}
 
     names = routine_names()
-    day = [r for r in since(runs, 1) if r.get("workflow") and r.get("script") == "heartbeat"]
+    # The owner's routines only: the engine's own jobs (learning, upkeep) aren't news.
+    day = [r for r in since(runs, 1) if r.get("workflow") and r.get("script") == "heartbeat"
+           and not r.get("system") and r["workflow"] not in CORE_WORKFLOWS]
     ok = list(dict.fromkeys(routine_name(r["workflow"], names) for r in day if r["status"] == "ok"))
     failed = list(dict.fromkeys(routine_name(r["workflow"], names) for r in day if r["status"] == "error"))
     queued = json.loads(BRIEF_QUEUE.read_text()) if BRIEF_QUEUE.exists() else []

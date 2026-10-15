@@ -160,7 +160,7 @@ def run_system_jobs() -> None:
         if code == 0:
             state[name] = {"last": today}
             log_run("heartbeat", "ok", system=name, workflow=name, stdout=out[-2000:])
-            record_event(f"Ran OK: {out.strip()[-150:] or name}", workflow=name)
+            # Not on the owner's board: the engine's own jobs aren't work done for them (the run log keeps it).
         else:
             # Exit 2 (its own quality check) or a crash: not the company's to fix, and not the
             # owner's to hear about. status.py shows it to whoever runs the engine.
