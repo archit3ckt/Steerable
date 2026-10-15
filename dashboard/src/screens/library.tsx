@@ -685,7 +685,7 @@ async function PlanView({ host, id, searchParams }: { host: DashboardHost; id: s
             {whole ? (
               <Card className="p-6">
                 <div dir="auto">
-                  <Markdown text={shown.body} />
+                  <Markdown text={withoutTitle(shown.body, plan.title)} />
                 </div>
               </Card>
             ) : (
@@ -696,14 +696,11 @@ async function PlanView({ host, id, searchParams }: { host: DashboardHost; id: s
           <PlanEditor planId={plan.id} body={plan.body} save={host.actions.savePlan}>
             <Card className="p-6">
               <div dir="auto">
-                <Markdown text={plan.body} />
+                <Markdown text={withoutTitle(plan.body, plan.title)} />
               </div>
             </Card>
           </PlanEditor>
         )}
-        <div className="mt-10 border-t border-line pt-5">
-          <RemovePlan planId={plan.id} title={plan.title} remove={host.actions.removePlan} />
-        </div>
       </article>
 
       <aside>
@@ -735,9 +732,25 @@ async function PlanView({ host, id, searchParams }: { host: DashboardHost; id: s
             );
           })}
         </ol>
+        <div className="mt-8 border-t border-line px-3 pt-5">
+          <RemovePlan planId={plan.id} title={plan.title} remove={host.actions.removePlan} />
+        </div>
       </aside>
     </div>
   );
+}
+
+/** The plan's text without a first heading that only repeats its title (shown above it already). */
+function withoutTitle(body: string, title: string): string {
+  const m = body.match(/^\s*#\s+(.+)\n+/);
+  return m && m[1].trim().toLowerCase() === title.trim().toLowerCase() ? body.slice(m[0].length) : body;
+}
+
+/** A line of a plan as people read it: a heading without its #s, a list item with a bullet. */
+function readable(text: string): { text: string; heading: boolean } {
+  const heading = text.match(/^#{1,6}\s+(.*)$/);
+  if (heading) return { text: heading[1], heading: true };
+  return { text: text.replace(/^(\s*)[-*+]\s+/, "$1\u2022 ").replace(/\*\*(.+?)\*\*/g, "$1"), heading: false };
 }
 
 /** What a version changed: added lines in green, removed ones struck through in rose, the rest folded. */
@@ -750,7 +763,7 @@ function Changes({ changes, first }: { changes: PlanChange[]; first: boolean }) 
     );
   }
   return (
-    <Card className="overflow-hidden py-2 font-mono text-sm leading-relaxed">
+    <Card className="overflow-hidden py-2 text-sm leading-relaxed">
       {first && <p className="px-5 pb-2 font-sans text-sm text-ink-3">The first version: all of it is new.</p>}
       {changes.map((c, k) =>
         c.op === "skip" ? (
@@ -772,7 +785,7 @@ function Changes({ changes, first }: { changes: PlanChange[]; first: boolean }) 
               {c.op === "add" ? "+" : c.op === "del" ? "−" : ""}
             </span>
             <span className="sr-only">{c.op === "add" ? "Added: " : c.op === "del" ? "Removed: " : ""}</span>
-            {c.text}
+            <span className={cx(readable(c.text).heading && "font-medium text-ink")}>{readable(c.text).text}</span>
           </p>
         ),
       )}
