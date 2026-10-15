@@ -149,9 +149,10 @@ export function RoutineCard({
           {/* The whole card opens the routine's page; the switch sits above that link. */}
           <Link
             href={`/work/${encodeURIComponent(r.id)}`}
+            title={r.name}
             className="font-medium after:absolute after:inset-0 after:rounded-2xl hover:underline"
           >
-            {r.name}
+            <span className="line-clamp-2">{r.name}</span>
           </Link>
           <p className="text-sm text-ink-3">
             {r.schedule}

@@ -104,7 +104,7 @@ def replace_task_line(old: str, new: str) -> bool:
 
 _TAGS = re.compile(r"\s+(?:@workflow|due|every|at|last|done|paused|rejected|saves):\S+"
                    r"|\s+(?:needs:approval|approved|@you)(?=\s|$)")
-_GOAL_NOTE = re.compile(r"\s*\(goal:[^)]*\)")
+_GOAL_NOTE = re.compile(r"\s*\(goal:(?:[^()]|\([^()]*\))*\)")  # a goal may hold one (aside)
 
 
 # ---------- schedules ----------

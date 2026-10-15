@@ -21,8 +21,11 @@ from ops_db import record_event
 
 def task_line(args: argparse.Namespace) -> str:
     title = task_title(args.description)
-    if not title or len(title) > 200:
-        raise ValueError("Give the routine a short description (up to 200 characters).")
+    if not title or len(title) > 80:
+        raise ValueError("Give the routine a short name, up to 80 characters, like “Find Reddit leads each morning”: it's "
+                         "the title the owner sees on cards. The details go in the workflow, the goal in --goal.")
+    if "(" in (args.goal or "") or ")" in (args.goal or ""):
+        raise ValueError("Write the --goal without brackets, like “10 conversations by 2026-11-05”.")
     if not re.fullmatch(r"[a-z][a-z0-9_]{1,40}", args.workflow):
         raise ValueError("--workflow must be a snake_case name, like reorder_reminders.")
     note = ""

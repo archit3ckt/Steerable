@@ -92,10 +92,30 @@ def _norm(title: str) -> str:
     return " ".join(re.findall(r"[a-z0-9À-￿]+", t))
 
 
+_META = re.compile(r"^(?:v(?:ersion)?\.?\s*\d|(?:last\s+)?(?:updated|changed|revised|edited|written|prepared|draft)\b|"
+                   r"\d{4}-\d{2}-\d{2}$|status:|owner:|by\s)", re.I)
+
+
+def summary(body: str) -> str:
+    """A plan's first real sentence, for its card: no headings, version or date lines, rules, tables or Markdown marks."""
+    for raw in body.splitlines():
+        line = raw.strip()
+        if not line or line.startswith(("#", "|", "---", "***", "___", "<!--")):
+            continue
+        italic = re.fullmatch(r"([_*])(?!\1)(.+)\1", line)  # a whole line in italics, like _Version 3, 2026-10-15_
+        line = re.sub(r"^(?:[-*+]\s+|\d+[.)]\s+|>\s*)", "", line)
+        line = re.sub(r"\[([^\]]*)\]\([^)]*\)", r"\1", line)  # links: their words
+        line = re.sub(r"(\*\*|__|\*|_|`)(.+?)\1", r"\2", line).strip()
+        if not line or _META.match(line) or (italic and len(line) < 80):
+            continue
+        return line
+    return ""
+
+
 def _row(con, r) -> dict:
     last = con.execute("SELECT body, who, note, at FROM plan_versions WHERE plan_id = ? AND n = ?", (r["id"], r["version"])).fetchone()
     body = last["body"] if last else ""
-    first = next((line.strip("# ").strip() for line in body.splitlines() if line.strip() and not line.startswith("#")), "")
+    first = summary(body)
     return {"id": r["id"], "title": r["title"], "kind": r["kind"], "version": r["version"], "createdAt": r["created"],
             "updatedAt": r["updated"], "updatedBy": last["who"] if last else "coo", "note": last["note"] if last else "",
             "summary": first[:200], "words": len(body.split())}

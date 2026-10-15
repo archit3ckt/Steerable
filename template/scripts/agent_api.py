@@ -213,7 +213,7 @@ def parse_task(line: str) -> dict | None:
     if not m:
         return None
     text = m.group(2)
-    note = re.search(r"\(goal:\s*([^;)]+?)\s*(?:;\s*metric:\s*([^)]+?)\s*)?\)", text)
+    note = re.search(r"\(goal:\s*((?:[^;()]|\([^()]*\))+?)\s*(?:;\s*metric:\s*((?:[^()]|\([^()]*\))+?)\s*)?\)", text)
     saves = tag(text, "saves")
     return {
         "line": line,

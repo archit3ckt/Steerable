@@ -82,9 +82,7 @@ async function Routine({
               </Pill>
             </p>
           )}
-          <h1 className="font-display text-4xl leading-tight tracking-tight sm:text-5xl">
-            {r.name}
-          </h1>
+          <h1 className={cx("font-display leading-tight tracking-tight", r.name.length > 60 ? "text-3xl" : "text-4xl sm:text-5xl")}>{r.name}</h1>
           <p className="mt-2 text-ink-2">{r.description}</p>
         </div>
         <div className="flex items-center gap-3">
