@@ -18,6 +18,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import type { Trace, TraceEvent } from "./backend/types";
+import { Markdown } from "./markdown";
 import { Pill, cx, type Tone } from "./ui";
 
 const KIND: Record<TraceEvent["kind"], { Icon: LucideIcon; label?: string; tone?: Tone }> = {
@@ -160,7 +161,12 @@ function TraceBody({ trace, url, showReview }: { trace: Trace; url: string; show
                 <Icon kind={e.kind} />
                 <div className="min-w-0 flex-1">
                   <p className="font-medium">{e.title}</p>
-                  {e.detail && <p className="mt-0.5 line-clamp-4 text-ink-2 whitespace-pre-line">{e.detail}</p>}
+                  {e.detail &&
+                    (e.kind === "record" ? (
+                      <p className="mt-0.5 text-ink-2 whitespace-pre-line">{e.detail}</p>
+                    ) : (
+                      <Folded text={e.detail} />
+                    ))}
                 </div>
               </li>
             ))}
@@ -222,6 +228,36 @@ function Icon({ kind, small }: { kind: TraceEvent["kind"]; small?: boolean }) {
     <span className={cx("grid shrink-0 place-items-center rounded-full", small ? "mt-0.5 size-4" : "size-6", colors[tone])} aria-hidden>
       <k.Icon className={small ? "size-2.5" : "size-3.5"} />
     </span>
+  );
+}
+
+/** A message or report, in Markdown as the owner will get it; a long one starts folded. */
+function Folded({ text }: { text: string }) {
+  const box = useRef<HTMLDivElement>(null);
+  const [long, setLong] = useState(false);
+  const [open, setOpen] = useState(false);
+  useEffect(() => {
+    const el = box.current;
+    if (el) setLong(el.scrollHeight > el.clientHeight + 4);
+  }, [text]);
+  return (
+    <div className="mt-1">
+      <div
+        ref={box}
+        className={cx(
+          "relative text-ink-2 [overflow-wrap:anywhere]",
+          !open && "max-h-48 overflow-hidden",
+          !open && long && "mask-b-from-70%",
+        )}
+      >
+        <Markdown text={text} />
+      </div>
+      {long && (
+        <button type="button" onClick={() => setOpen(!open)} className="mt-1 text-xs font-medium text-ink-3 hover:text-ink">
+          {open ? "Show less" : "Show all"}
+        </button>
+      )}
+    </div>
   );
 }
 

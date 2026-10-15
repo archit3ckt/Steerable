@@ -621,7 +621,7 @@ function sampleTrace(traceId: string): Trace | null {
         { n: 6, at: at(23), kind: "record", title: "Add a row to Leads", detail: "Name: Café Luna\nStatus: Contacted" },
         { n: 7, at: at(22), kind: "would", title: "Email Northside Bakery an intro with the price sheet", detail: "To: orders@northside.example\nSubject: Plants for Northside Bakery" },
         { n: 8, at: at(22), kind: "record", title: "Add a row to Leads", detail: "Name: Northside Bakery\nStatus: Contacted" },
-        { n: 9, at: at(22), kind: "message", title: "Tell you", detail: "Wrote to 2 new cafes: Café Luna and Northside Bakery." },
+        { n: 9, at: at(22), kind: "message", title: "Tell you", detail: "**Wrote to 2 new cafes** (added to Leads):\n- [Café Luna](https://example.com/cafe-luna), on Main Street\n- [Northside Bakery](https://example.com/northside), opening in May" },
       ],
     };
   }
