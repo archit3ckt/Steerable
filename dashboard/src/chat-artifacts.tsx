@@ -18,6 +18,11 @@ function parseOpen(value: string | null): Opened | null {
   return m ? { id: m[1], version: Number(m[2]) } : null;
 }
 
+/** Open a plan beside the chat, at that version (a test's changes just saved, say). */
+export function openPlan(id: string, version: number) {
+  setOpen({ id, version });
+}
+
 function setOpen(opened: Opened | null) {
   const params = new URLSearchParams(window.location.search);
   if (opened) params.set("open", `plan:${opened.id}:${opened.version}`);

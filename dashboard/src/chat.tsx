@@ -7,6 +7,7 @@ import type { ChatActivity, ChatFile, ChatMessage, ChatPage, ChatStep } from "./
 import { dayLabel } from "./format";
 import type { DashboardActions } from "./host";
 import { ChatArtifacts } from "./chat-artifacts";
+import { ChatCheck } from "./chat-check";
 import { CopyButton } from "./copy-button";
 import { Markdown } from "./markdown";
 import { CooAvatar, cx } from "./ui";
@@ -45,6 +46,9 @@ export function Chat({
   filesUrl,
   plansUrl,
   changesUrl,
+  checksUrl,
+  startCheck,
+  applyCheck,
 }: {
   /** The first page: the latest messages, or those around focusId. */
   messages: ChatMessage[];
@@ -70,6 +74,10 @@ export function Chat({
   /** The host's plansUrl and runChangesUrl: what a reply made in the library opens from under it. */
   plansUrl?: string;
   changesUrl?: string;
+  /** The host's checksUrl and actions: replies that propose something offer a test, with its result under them. */
+  checksUrl?: string;
+  startCheck?: DashboardActions["startCheck"];
+  applyCheck?: DashboardActions["applyCheck"];
 }) {
   const [list, setList] = useState(messages);
   const [earlier, setEarlier] = useState(hasEarlier);
@@ -348,6 +356,17 @@ export function Chat({
                     <Markdown text={m.text} />
                   </div>
                   {m.artifacts && <ChatArtifacts artifacts={m.artifacts} plansUrl={plansUrl} changesUrl={changesUrl} />}
+                  {m.artifacts?.check && checksUrl && startCheck && applyCheck && (
+                    <ChatCheck
+                      messageId={m.id}
+                      kind={m.artifacts.check.kind}
+                      cooName={cooName}
+                      url={checksUrl}
+                      startCheck={startCheck}
+                      applyCheck={applyCheck}
+                      sendMessage={sendMessage}
+                    />
+                  )}
                   {m.text && <CopyButton text={m.text} label={`Copy ${cooName}'s message`} className={cx("mt-0.5", REVEAL)} />}
                 </div>
               </>

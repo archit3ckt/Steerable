@@ -1,4 +1,4 @@
-import type { CellValue, CompanyBackend, LibraryView, LibraryViewConfig } from "./backend/types";
+import type { CellValue, Check, CheckKind, CompanyBackend, LibraryView, LibraryViewConfig } from "./backend/types";
 import { AgentError } from "./backend/agent";
 
 /**
@@ -51,6 +51,12 @@ export type DashboardHost = {
    */
   plansUrl?: string;
   /**
+   * A GET route answering the backend's check() as JSON (?message=<id>; body in the package's
+   * check-routes.ts). With it and the startCheck/applyCheck actions, replies that propose something
+   * offer a test ("Test it with customers") and show its result under them.
+   */
+  checksUrl?: string;
+  /**
    * A GET route for practice and watched runs (body in the package's trace-routes.ts): ?id=<trace>
    * answers the backend's trace() as JSON, &shot=<n>.jpg a picture from it. With it, decisions and
    * routine pages show exactly what a routine would do, or did, step by step.
@@ -96,6 +102,10 @@ export type DashboardActions = {
   restorePlan(planId: string, version: number): Promise<ActionResult>;
   /** Archives it and goes back to the library. */
   removePlan(planId: string): Promise<ActionResult>;
+  /** Test a chat reply that proposed something (CompanyBackend.startCheck). */
+  startCheck(messageId: string, kind?: CheckKind): Promise<ActionResult & { check?: Check }>;
+  /** The owner's picks of a test's edits, as a new version of the plan it tested. */
+  applyCheck(messageId: string, editIds: string[]): Promise<ActionResult & { plan?: string; version?: number; skipped?: string[] }>;
 };
 
 /** Actions return { error } instead of throwing: in production Next hides thrown messages. */
@@ -119,6 +129,26 @@ export async function dashboardAction(backend: () => Promise<CompanyBackend>, wo
     if (error instanceof AgentError) return { error: error.message };
     throw error;
   }
+}
+
+/** Like dashboardAction, and also hands back what the work returned (an object) to the browser. */
+export async function dashboardActionResult<T extends object>(
+  backend: () => Promise<CompanyBackend>,
+  work: (b: CompanyBackend) => Promise<T>,
+): Promise<ActionResult & Partial<T>> {
+  try {
+    return await work(await backend());
+  } catch (error) {
+    if (error instanceof AgentError) return { error: error.message } as ActionResult & Partial<T>;
+    throw error;
+  }
+}
+
+/** A message id and a test kind from the browser, checked for shape (the engine checks the rest). */
+export function checkInput(messageId: unknown, kind?: unknown): { messageId: string; kind?: CheckKind } {
+  const id = typeof messageId === "string" && /^[\w-]{1,40}$/.test(messageId) ? messageId : "-";
+  const kinds: CheckKind[] = ["customers", "numbers", "week", "pushback"];
+  return { messageId: id, kind: kinds.includes(kind as CheckKind) ? (kind as CheckKind) : undefined };
 }
 
 /** Library cells from the browser, checked for shape (the engine checks the values): up to 100 columns. */

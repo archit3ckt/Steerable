@@ -10,6 +10,7 @@ import type {
   BookPassage,
   ChatActivity,
   ChatFile,
+  Check,
   ChatPage,
   ChatMessage,
   Company,
@@ -300,6 +301,10 @@ export function agentBackend({ url, token, company }: { url: string; token: stri
       const { reply } = await call<{ reply: ChatMessage | null }>("POST", "/v1/chat", { text, files }, CHAT_TIMEOUT_MS);
       return reply;
     },
+    check: (messageId) => call<Check>("GET", `/v1/checks/${id(messageId)}`),
+    startCheck: (messageId, kind) => call<Check>("POST", `/v1/checks/${id(messageId)}`, kind ? { kind } : {}, WRITE_TIMEOUT_MS),
+    applyCheck: (messageId, editIds) =>
+      call<{ plan: string; version: number; applied: string[]; skipped: string[] }>("POST", `/v1/checks/${id(messageId)}/apply`, { edits: editIds }, WRITE_TIMEOUT_MS),
     chatPage(query = {}) {
       const params = new URLSearchParams(Object.entries(query).filter(([, v]) => v !== undefined && v !== "").map(([k, v]) => [k, String(v)]));
       return request<ChatPage>(url, token, company.cooName, "GET", `/v1/chat/page?${params}`);

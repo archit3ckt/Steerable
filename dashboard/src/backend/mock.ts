@@ -1,6 +1,7 @@
 import type {
   BackgroundStatus,
   ChatFile,
+  Check,
   ChatPage,
   ChatMessage,
   Company,
@@ -44,6 +45,8 @@ type State = {
   library: ReturnType<typeof sampleLibrary>;
   books: ReturnType<typeof sampleBooks>;
   plans: ReturnType<typeof samplePlans>;
+  /** Tests of replies, by message id. */
+  checks: Map<string, Check>;
 };
 
 function seed(company: Company, now: number): State {
@@ -56,6 +59,7 @@ function seed(company: Company, now: number): State {
     library: sampleLibrary(now),
     books: sampleBooks(now),
     plans: samplePlans(now),
+    checks: new Map(),
     decisions: [
       {
         id: "d-refund",
@@ -231,6 +235,15 @@ function seed(company: Company, now: number): State {
         at: ago(2 * HOUR + 49 * MIN),
         text: "**Yes**, the van is free until 11. Friday so far:\n\n- 8:00 pick up the pothos\n- 9–10 deliver to the cafe\n- 10:30 back for the market stall\n\nWant me to confirm 9–10am with them?",
         steps: [{ say: "Let me check what's on for Friday first." }, "Reading your notes", "Reading the task list", "Using Google Calendar: list events"],
+      },
+      { id: "c4", from: "you", at: ago(40 * MIN), text: "How should I lay out the wholesale page for cafes?" },
+      {
+        id: "c5",
+        from: "coo",
+        at: ago(39 * MIN),
+        text:
+          "I'd keep it to four parts, in this order:\n\n1. **What they get**: \"Plants that stay green, swapped before they fade\", with a photo of a real cafe\n2. **Proof**: two cafes you already supply, with their words\n3. **Price**: $49 a month for 6 plants, care included\n4. **One button**: \"Book a free visit\"\n\nLeave out the full catalog: cafes want it handled, not a choice of 80 plants.",
+        artifacts: { run: "sample-chat", check: { kind: "customers" } },
       },
     ],
   };
@@ -467,6 +480,45 @@ export function mockBackend(company: Company): CompanyBackend {
       };
       s.chat.push(reply);
       return reply;
+    },
+
+    async check(messageId) {
+      return (state().checks ??= new Map()).get(messageId) ?? { status: "none" };
+    },
+
+    async startCheck(messageId, kind) {
+      const s = state();
+      const found = (s.checks ??= new Map()).get(messageId);
+      if (found && found.status !== "none" && found.status !== "failed") return found;
+      const message = s.chat.find((m) => m.id === messageId && m.from === "coo");
+      if (!message) throw new AgentError("That message isn't in the conversation any more.", 404);
+      const done: Check = {
+        status: "done",
+        kind: kind ?? message.artifacts?.check?.kind ?? "customers",
+        title: "",
+        finishedAt: new Date().toISOString(),
+        result: {
+          summary: "It mostly holds up. Two of the three cafe owners couldn't tell whether $49 covers replacing plants, so say it next to the price.",
+          voices: [
+            { who: "Maya, runs a busy cafe, on her phone between orders", went: "Liked the photo and the promise straight away. Scrolled to the price and paused: does \"care included\" mean you replace plants that die?", stuck: "Whether dead plants are replaced" },
+            { who: "Tom, compares three suppliers before deciding", went: "Read the proof first, then the price. Wanted to know if there's a contract before booking a visit.", stuck: "Whether dead plants are replaced, and if there's a contract" },
+            { who: "Priya, opening her second cafe", went: "Booked a visit right away. The short page suited her.", stuck: "" },
+          ],
+          findings: [
+            { id: "f1", moment: "At the price", problem: "\"Care included\" doesn't say whether plants that fade are replaced, which is what they care about most.", voices: ["Maya", "Tom"], fix: "Say plainly that faded plants are swapped free." },
+          ],
+          held: ["Four short parts, in that order", "One button, no catalog"],
+          edits: [
+            { id: "e1", finding: "f1", find: "$49 a month for 6 plants, care included", replace: "$49 a month for 6 plants: watering, care, and any plant that fades swapped free. No contract.", why: "Say faded plants are swapped free", applies: true },
+          ],
+        },
+      };
+      s.checks.set(messageId, done);
+      return done;
+    },
+
+    async applyCheck() {
+      throw new AgentError("This reply has no plan to change. Ask in the chat instead.", 400);
     },
 
     async newConversation() {

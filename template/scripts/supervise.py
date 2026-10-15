@@ -90,7 +90,7 @@ def stop(workflow: str) -> None:
 
 # ---------- asking the AI ----------
 
-def _ask(prompt: str, images: list[Path], schema: dict, source: str, cap_usd: str = "0.30") -> dict:
+def _ask(prompt: str, images: list[Path], schema: dict, source: str, cap_usd: str = "0.30", max_tokens: int = 1500) -> dict:
     """One question to Claude, with pictures. Through the API when there's a key (the gateway in
     Steerable Cloud), else Claude Code signed in with the owner's Claude account."""
     budget_check()
@@ -101,7 +101,7 @@ def _ask(prompt: str, images: list[Path], schema: dict, source: str, cap_usd: st
                                                  "data": base64.b64encode(p.read_bytes()).decode()}} for p in images]
         content.append({"type": "text", "text": prompt})
         response = anthropic.Anthropic().messages.create(
-            model=MODEL, max_tokens=1500, messages=[{"role": "user", "content": content}],
+            model=MODEL, max_tokens=max_tokens, messages=[{"role": "user", "content": content}],
             output_config={"format": {"type": "json_schema", "schema": schema}})
         record_usage(source, MODEL, response.usage)
         return json.loads(next(b.text for b in response.content if b.type == "text"))

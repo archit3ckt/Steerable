@@ -285,9 +285,16 @@ def converse(text: str, channel: str = "Telegram", show_prompt: bool = True, att
                 saved = plans.run_plans(run)
             except Exception as e:  # noqa: BLE001 - never break the chat over it
                 log_run("bridge", "error", error=repr(e)[:300])
+    # Does the reply propose something worth testing before the owner acts on it? One Jev call (checks.py).
+    check = None
+    if channel == APP and show_prompt and text:
+        import checks
+
+        check = checks.offer(text, reply, saved)
     # What the turn made or changed in the library, shown with the reply (the chat's "artifacts").
-    artifacts = {"run": run, **({"changes": changes} if changes else {}), **({"plans": saved} if saved else {})}
-    _log_chat("coo", reply, steps, artifacts=artifacts if changes or saved else None)
+    artifacts = {"run": run, **({"changes": changes} if changes else {}), **({"plans": saved} if saved else {}),
+                 **({"check": check} if check else {})}
+    _log_chat("coo", reply, steps, artifacts=artifacts if changes or saved or check else None)
     if show_prompt and text:
         # Did this turn finish a project on the Goals page? A cheap check (Jev), in the background.
         import threading

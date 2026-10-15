@@ -468,6 +468,48 @@ export type ChatArtifacts = {
   run: string;
   changes?: TableChanges[];
   plans?: { id: string; title: string; version: number; note: string; created?: boolean }[];
+  /** The reply proposes something worth testing before the owner acts on it (the engine's checks.py), and which test fits. */
+  check?: { kind: CheckKind };
+};
+
+/**
+ * The tests a proposal can get. customers: customers go through it (a page, an offer, an email);
+ * numbers: every figure recomputed; week: an ordinary week run through it; pushback: the strongest objections.
+ */
+export type CheckKind = "customers" | "numbers" | "week" | "pushback";
+
+/**
+ * A test of a chat reply that proposed something: one AI call with fixed points of view. A finding
+ * names a concrete moment (and, for customers and pushback, two voices hit it); edits are exact
+ * replacements in the proposal, `applies` when its text is there. With `plan`, the test was of that
+ * plan at that version, and applyCheck() saves the picked edits as a new version; planChanged: it
+ * has changed since, so it can be tested again. `page`: a live page it went through in a real browser.
+ */
+export type Check =
+  | { status: "none" }
+  | { status: "running"; kind: CheckKind; title: string; plan?: { id: string; version: number } }
+  | { status: "failed"; kind: CheckKind; title: string; error: string }
+  | {
+      status: "done";
+      kind: CheckKind;
+      title: string;
+      finishedAt: ISODate;
+      plan?: { id: string; version: number };
+      planChanged?: boolean;
+      page?: string;
+      applied?: string[];
+      result: CheckResult;
+    };
+
+export type CheckResult = {
+  /** One or two sentences: did it hold up, and the one thing to change if any. */
+  summary: string;
+  /** Who went through it, what happened, and where they got stuck ("" if nowhere). */
+  voices: { who: string; went: string; stuck: string }[];
+  findings: { id: string; moment: string; problem: string; voices: string[]; fix: string }[];
+  /** What worked and should stay. */
+  held: string[];
+  edits: { id: string; finding: string; find: string; replace: string; why: string; applies: boolean }[];
 };
 
 /**
@@ -623,6 +665,12 @@ export interface CompanyBackend {
   /** Keep a file the owner attaches (up to 20 MB), for a message to name. */
   uploadFile(name: string, data: ArrayBuffer): Promise<ChatFile>;
   file(id: string): Promise<FileContent>;
+  /** The test of a COO reply (by message id): none yet, running, failed or done. */
+  check(messageId: string): Promise<Check>;
+  /** Start testing a reply (the kind it was offered unless given); a finished test comes back as it is unless its plan changed. */
+  startCheck(messageId: string, kind?: CheckKind): Promise<Check>;
+  /** The owner's picks of a finished test's edits, saved as a new version of the plan it tested. */
+  applyCheck(messageId: string, editIds: string[]): Promise<{ plan: string; version: number; applied: string[]; skipped: string[] }>;
   /** Start a fresh conversation: the COO forgets the thread so far (not the business), and the history stays, with a divider. */
   newConversation(): Promise<void>;
   /** What the COO is doing for the reply it's working on, to show while the owner waits. */

@@ -35,6 +35,9 @@ Every request except GET /health needs `Authorization: Bearer <AGENT_API_TOKEN>`
     GET  /v1/chat/search?q=            messages in the whole history with every word, newest first (up to 50)
     POST /v1/chat/new                  start a fresh conversation (the history stays, with a divider)
     GET  /v1/chat/activity             what the COO is doing for the reply it's working on
+    GET  /v1/checks/<message>          the test of a reply that proposed something ({"status": "none"} before one)
+    POST /v1/checks/<message>          {"kind"}  start it (checks.py): one AI call, in the background
+    POST /v1/checks/<message>/apply    {"edits": [ids]}  the owner's picks, as a new version of the plan it tested
     GET  /v1/ai                        how the COO reaches its AI: Claude account or key, and Jev (scripts/ai_access.py)
     POST /v1/ai/claude/login|code|cancel|logout   sign Claude Code in with the owner's Claude account
     POST /v1/ai/jev  /v1/ai/jev/remove  the owner's Jev key, checked before it's kept
@@ -117,6 +120,7 @@ import bridge
 import browser
 import builder
 import change
+import checks
 import extension
 import files
 import flow
@@ -1493,6 +1497,38 @@ def search_chat(query: str, limit: int = 50) -> list[dict]:
     return found
 
 
+def _check_target(message: str) -> tuple[dict, str]:
+    """A COO reply by its id, and what the owner had said just before it."""
+    found = None
+    for e in _newest_first():
+        if found is None:
+            if e.get("from") == "coo" and _message(e)["id"] == message:
+                found = e
+            continue
+        if e.get("from") == "you":
+            return found, e.get("text") or ""
+        if e.get("from") == bridge.DIVIDER:
+            break
+    if found is None:
+        raise ApiError(404, "That message isn't in the conversation any more.")
+    return found, ""
+
+
+def _checks(fn, *args):
+    try:
+        return fn(*args)
+    except checks.CheckError as e:
+        raise ApiError(400, str(e)) from None
+    except plans.PlanError as e:
+        raise ApiError(400, str(e)) from None
+
+
+def start_check(message: str, body: dict) -> dict:
+    entry, said = _check_target(message)
+    kind = str(body.get("kind") or ((entry.get("artifacts") or {}).get("check") or {}).get("kind") or "")
+    return _checks(checks.start, message, entry, said, kind, coo_name())
+
+
 def new_chat() -> dict:
     try:
         return {"started": bridge.new_conversation()}
@@ -2046,6 +2082,10 @@ ROUTES = [
                                                      limit=int((q.get("limit") or ["50"])[0] or 50))),
     ("POST", r"/v1/chat", lambda q, b: {"reply": send(body_field(b, "text", str), b.get("files") or [])}),
     ("GET", r"/v1/chat/activity", lambda q, b: chat_activity()),
+    ("GET", r"/v1/checks/(?P<mid>[0-9a-f]{6,40})", lambda q, b, mid: _checks(checks.view, mid)),
+    ("POST", r"/v1/checks/(?P<mid>[0-9a-f]{6,40})", lambda q, b, mid: start_check(mid, b)),
+    ("POST", r"/v1/checks/(?P<mid>[0-9a-f]{6,40})/apply",
+     lambda q, b, mid: _checks(checks.apply, mid, [str(x) for x in (b.get("edits") or [])][:10])),
     ("GET", r"/v1/status", lambda q, b: status()),
     ("POST", r"/v1/chat/new", lambda q, b: new_chat()),
     ("GET", r"/v1/chat/search", lambda q, b: search_chat((q.get("q") or [""])[0])),

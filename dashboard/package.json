@@ -33,6 +33,7 @@
     "./chat-routes": "./src/chat-routes.ts",
     "./run-routes": "./src/run-routes.ts",
     "./plan-routes": "./src/plan-routes.ts",
+    "./check-routes": "./src/check-routes.ts",
     "./trace-routes": "./src/trace-routes.ts",
     "./library-routes": "./src/library-routes.ts",
     "./run-changes": "./src/run-changes.tsx",

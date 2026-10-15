@@ -2,7 +2,7 @@
 
 import { refresh } from "next/cache";
 import { redirect } from "next/navigation";
-import { chatFiles, chatText, dashboardAction, libraryCells, libraryViewInput } from "../src/host";
+import { chatFiles, chatText, checkInput, dashboardAction, dashboardActionResult, libraryCells, libraryViewInput } from "../src/host";
 import { backend } from "./host";
 
 // The owner's actions. backend() checks the session first.
@@ -156,5 +156,17 @@ export async function restorePlan(plan: string, version: number) {
 export async function removePlan(plan: string) {
   const result = await dashboardAction(backend, (b) => b.removePlan(planId(plan)));
   if (!result.error) redirect("/library");
+  return result;
+}
+
+export async function startCheck(messageId: string, kind?: string) {
+  const input = checkInput(messageId, kind);
+  return dashboardActionResult(backend, async (b) => ({ check: await b.startCheck(input.messageId, input.kind) }));
+}
+
+export async function applyCheck(messageId: string, editIds: string[]) {
+  const ids = (Array.isArray(editIds) ? editIds : []).filter((x): x is string => typeof x === "string").slice(0, 10).map((x) => x.slice(0, 20));
+  const result = await dashboardActionResult(backend, (b) => b.applyCheck(checkInput(messageId).messageId, ids));
+  refresh();
   return result;
 }

@@ -64,6 +64,9 @@ async function Conversation({ host, searchParams }: { host: DashboardHost; searc
           filesUrl={host.chatFilesUrl}
           plansUrl={host.plansUrl}
           changesUrl={host.runChangesUrl}
+          checksUrl={host.checksUrl}
+          startCheck={host.actions.startCheck}
+          applyCheck={host.actions.applyCheck}
           cooName={company.cooName}
         />
       )}
