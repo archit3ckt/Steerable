@@ -1,21 +1,23 @@
 "use client";
 
-import { BookOpen, FileText, Loader2, Plus, Search, Table2, Upload } from "lucide-react";
+import { BookOpen, FileText, LayoutDashboard, Loader2, Plus, Search, Table2, Upload } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, useTransition } from "react";
-import type { Book, LibraryTableSummary, Plan } from "./backend/types";
+import type { Book, DashboardSummary, LibraryTableSummary, Plan } from "./backend/types";
 import { cx } from "./ui";
 
 /** The library's own sidebar, like monday's list of boards: every table, findable by name. */
 export function LibrarySidebar({
   tables,
+  dashboards = [],
   books = [],
   plans = [],
   active,
   canTeach = false,
 }: {
   tables: LibraryTableSummary[];
+  dashboards?: DashboardSummary[];
   books?: Book[];
   plans?: Plan[];
   active?: string;
@@ -43,6 +45,39 @@ export function LibrarySidebar({
         </label>
       )}
       <ul className="-mx-1 min-h-0 flex-1 space-y-0.5 overflow-y-auto px-1">
+        {dashboards.length > 0 && (
+          <li className="mb-1 px-2 text-xs font-medium tracking-wide text-ink-3 uppercase" aria-hidden>
+            Dashboards
+          </li>
+        )}
+        {dashboards
+          .filter((d) => words.every((w) => `${d.name} ${d.description}`.toLowerCase().includes(w)))
+          .map((d) => {
+            const current = d.id === active;
+            return (
+              <li key={d.id}>
+                <Link
+                  href={`/library/dashboards/${d.id}`}
+                  aria-current={current ? "page" : undefined}
+                  title={d.description || d.name}
+                  className={cx(
+                    "flex items-center gap-2.5 rounded-lg px-2 py-2 text-sm transition-colors",
+                    current ? "bg-surface font-medium text-ink shadow-sm" : "text-ink-2 hover:bg-surface-2 hover:text-ink",
+                  )}
+                >
+                  <LayoutDashboard className={cx("size-4 shrink-0", current ? "text-accent" : "text-ink-3")} aria-hidden />
+                  <span className="min-w-0 flex-1 truncate" dir="auto">
+                    {d.name}
+                  </span>
+                </Link>
+              </li>
+            );
+          })}
+        {dashboards.length > 0 && (
+          <li className="mt-5 mb-1 px-2 text-xs font-medium tracking-wide text-ink-3 uppercase" aria-hidden>
+            Tables
+          </li>
+        )}
         {shown.map((t) => {
           const current = t.id === active || t.name === active;
           return (

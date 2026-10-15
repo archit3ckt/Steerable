@@ -515,15 +515,10 @@ class Table:
             key = f"FOLD({key})"
         return key, args
 
-    def query(self, search: str = "", where: dict | None = None, sort: str = "", desc: bool = False,
-              limit: int = 100, offset: int = 0, archived: bool = False, group: str = "",
-              between: tuple[str, str, str] | None = None) -> dict:
-        """A page of rows for the app's views, all in SQL so a big table stays quick: rows whose text
-        cells contain every word of `search`, whose cells equal `where` (by column name; a tags column
-        contains it), whose date column `between` = (column, from, to) falls in that range, grouped by a
-        column (rows ordered by it first, with a count per value in `groups`), sorted by a column (a
-        status by its labels' order, empty cells last) or newest first. Also the total, sums of number
-        columns over all matching rows, related rows' labels and attached files' names."""
+    def _filter(self, search: str = "", where: dict | None = None, between: tuple[str, str, str] | None = None,
+                archived: bool = False) -> tuple[str, list]:
+        """The SQL condition (and its arguments) for rows matching a search, column filters and a date
+        range: the one filter behind views, query() and dashboards (dashboards.py)."""
         conds, args = ["table_id = ?", "archived = ?"], [self.id, int(archived)]
         cell = self._cell
         texts = [c for c in self.columns if c["type"] in ("text", "longtext", "person", "link", "status", "tags")]
@@ -550,7 +545,19 @@ class Table:
                 raise LibraryError(f"{col['name']} isn't a date column.")
             conds.append(f"{cell(col)} >= ? AND {cell(col)} <= ?")
             args += [between[1], between[2]]
-        filt = " AND ".join(conds)
+        return " AND ".join(conds), args
+
+    def query(self, search: str = "", where: dict | None = None, sort: str = "", desc: bool = False,
+              limit: int = 100, offset: int = 0, archived: bool = False, group: str = "",
+              between: tuple[str, str, str] | None = None) -> dict:
+        """A page of rows for the app's views, all in SQL so a big table stays quick: rows whose text
+        cells contain every word of `search`, whose cells equal `where` (by column name; a tags column
+        contains it), whose date column `between` = (column, from, to) falls in that range, grouped by a
+        column (rows ordered by it first, with a count per value in `groups`), sorted by a column (a
+        status by its labels' order, empty cells last) or newest first. Also the total, sums of number
+        columns over all matching rows, related rows' labels and attached files' names."""
+        filt, args = self._filter(search, where, between, archived)
+        cell = self._cell
         order, order_args = ["created DESC", "rowid DESC"], []
         if sort:
             key, key_args = self._key(self._col(sort))

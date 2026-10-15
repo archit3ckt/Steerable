@@ -57,6 +57,11 @@ Every request except GET /health needs `Authorization: Bearer <AGENT_API_TOKEN>`
     GET  /v1/plans; GET /v1/plans/<id>   the business's plans (plans.py), one per subject, with their versions
     GET  /v1/plans/<id>/versions/<n>     a version's text and what it changed
     POST /v1/plans/<id> {body, note}; POST /v1/plans/<id>/restore {version}; POST /v1/plans/<id>/delete
+    GET  /v1/dashboards; GET /v1/dashboards/<id>   dashboards over the library (dashboards.py); a dashboard with what
+                                       each chart shows now, the tables it can count, and requests to the COO about it
+    POST /v1/dashboards {name}; /v1/dashboards/<id> {name?, description?}; .../delete
+    POST /v1/dashboards/<id>/widgets {widget}; .../widgets/<w> {widget}; .../widgets/<w>/<remove|up|down>
+    GET  /v1/dashboards/asks; POST /v1/dashboards/asks {text, dashboard?}  ask the COO for a dashboard (in the background)
     GET  /v1/runs/<run>/changes        what a routine run or chat turn changed in the library (?table&after&limit)
     GET  /v1/status                    what's running in the background (routines, chat, builds, fixes, its own jobs)
     GET  /v1/export                    the company's files as a .tar.gz (no secrets, caches or sessions)
@@ -128,6 +133,7 @@ import heartbeat
 import incident
 import integrations
 import books
+import dashboards
 import plans
 import library
 import library_io
@@ -1761,6 +1767,51 @@ def _ai(fn, *args):
         raise ApiError(400, str(e)) from None
 
 
+# ---------- dashboards over the library ----------
+
+def _dash(fn, *args):
+    try:
+        return fn(*args)
+    except dashboards.DashboardError as e:
+        raise ApiError(404 if "no such dashboard" in str(e) else 400, str(e)) from None
+
+
+def dashboard_detail(did: str) -> dict:
+    found = dashboards.detail(did)
+    if not found or found["id"] != did:
+        raise ApiError(404, "There's no such dashboard.")
+    return {**found, "sources": dashboards.sources(), "asks": dashboards.asks(did)}
+
+
+def dashboard_edit(did: str, b: dict) -> dict:
+    name = b.get("name") if isinstance(b.get("name"), str) else None
+    description = b.get("description") if isinstance(b.get("description"), str) else None
+    return _dash(dashboards.rename, did, name, description, "you")
+
+
+def dashboard_widget(did: str, b: dict, wid: str | None = None) -> dict:
+    return _dash(dashboards.save_widget, did, wid, body_field(b, "widget", dict), "you")
+
+
+def dashboard_ask(b: dict) -> dict:
+    """The owner asks the COO for a dashboard, or a change to one. The COO works on it in the
+    background, through the chat (where the owner sees it too); its reply lands in the Library."""
+    did = b.get("dashboard") if isinstance(b.get("dashboard"), str) and b.get("dashboard") else None
+    made = _dash(dashboards.ask, body_field(b, "text", str), did)
+    threading.Thread(target=_ask_dashboard, args=(made,), daemon=True).start()
+    return made
+
+
+def _ask_dashboard(made: dict) -> None:
+    bridge._log_chat("you", f"A dashboard: {made['text']}")
+    try:
+        reply, status = bridge.converse(dashboards.ask_prompt(made), bridge.APP, show_prompt=False), "answered"
+    except Exception as e:  # noqa: BLE001 - the owner sees that it didn't work, in the Library
+        log_run("agent_api", "error", step="dashboard ask", error=repr(e)[:300])
+        reply, status = "I couldn't get to this just now. Ask again in a minute.", "failed"
+    dashboards.answered(made["id"], reply or "Done.", status)
+
+
 # ---------- the library (records), for the app ----------
 
 def _lib(fn):
@@ -2104,6 +2155,17 @@ ROUTES = [
     ("POST", r"/v1/extension/status", lambda q, b: extension_sites(b)),
     ("GET", r"/v1/telegram", lambda q, b: telegram.status()),
     ("GET", r"/v1/library", lambda q, b: library.tables()),
+    ("GET", r"/v1/dashboards", lambda q, b: dashboards.dashboards()),
+    ("POST", r"/v1/dashboards", lambda q, b: _dash(dashboards.create, body_field(b, "name", str), "", "you")),
+    ("GET", r"/v1/dashboards/asks", lambda q, b: dashboards.asks()),
+    ("POST", r"/v1/dashboards/asks", lambda q, b: dashboard_ask(b)),
+    ("GET", r"/v1/dashboards/(?P<did>db[0-9a-f]+)", lambda q, b, did: dashboard_detail(did)),
+    ("POST", r"/v1/dashboards/(?P<did>db[0-9a-f]+)", lambda q, b, did: dashboard_edit(did, b)),
+    ("POST", r"/v1/dashboards/(?P<did>db[0-9a-f]+)/delete", lambda q, b, did: (_dash(dashboards.remove, did), {"ok": True})[1]),
+    ("POST", r"/v1/dashboards/(?P<did>db[0-9a-f]+)/widgets", lambda q, b, did: dashboard_widget(did, b)),
+    ("POST", r"/v1/dashboards/(?P<did>db[0-9a-f]+)/widgets/(?P<wid>w[0-9a-f]+)", lambda q, b, did, wid: dashboard_widget(did, b, wid)),
+    ("POST", r"/v1/dashboards/(?P<did>db[0-9a-f]+)/widgets/(?P<wid>w[0-9a-f]+)/(?P<action>remove|up|down)",
+     lambda q, b, did, wid, action: (_dash(dashboards.change_widget, did, wid, action, "you"), {"ok": True})[1]),
     ("GET", r"/v1/plans", lambda q, b: plans.plans()),
     ("GET", r"/v1/plans/(?P<pid>pl[0-9a-f]+)", lambda q, b, pid: plan_detail(pid)),
     ("GET", r"/v1/plans/(?P<pid>pl[0-9a-f]+)/versions/(?P<n>[0-9]{1,6})", lambda q, b, pid, n: plan_version(pid, n)),

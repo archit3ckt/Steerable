@@ -1,4 +1,4 @@
-import type { CellValue, Check, CheckKind, CompanyBackend, LibraryView, LibraryViewConfig } from "./backend/types";
+import type { CellValue, Check, CheckKind, CompanyBackend, DashboardWidgetSpec, LibraryView, LibraryViewConfig } from "./backend/types";
 import { AgentError } from "./backend/agent";
 
 /**
@@ -97,6 +97,15 @@ export type DashboardActions = {
   setBookPaused(bookId: string, paused: boolean): Promise<ActionResult>;
   retryBook(bookId: string): Promise<ActionResult>;
   removeBook(bookId: string): Promise<ActionResult>;
+  /** An empty dashboard; returns its id (the browser opens it). */
+  createDashboard(name: string): Promise<ActionResult & { id?: string }>;
+  saveDashboard(dashboardId: string, change: { name?: string; description?: string }): Promise<ActionResult>;
+  /** Archives it and goes back to the library. */
+  removeDashboard(dashboardId: string): Promise<ActionResult>;
+  saveDashboardWidget(dashboardId: string, widgetId: string | null, widget: DashboardWidgetSpec): Promise<ActionResult>;
+  changeDashboardWidget(dashboardId: string, widgetId: string, action: "remove" | "up" | "down"): Promise<ActionResult>;
+  /** Ask the COO for a dashboard (or a change to this one), worked on in the background. */
+  askForDashboard(text: string, dashboardId?: string): Promise<ActionResult>;
   /** The owner's edit of a plan: a new version. */
   savePlan(planId: string, body: string, note: string): Promise<ActionResult>;
   restorePlan(planId: string, version: number): Promise<ActionResult>;
@@ -184,6 +193,42 @@ export function libraryViewInput(view: unknown): { name?: string; type?: Library
     };
   }
   return out;
+}
+
+/** A dashboard's or chart's id from the browser ("" if it isn't one, which the engine refuses). */
+export function dashboardRef(x: unknown, kind: "dashboard" | "widget" = "dashboard"): string {
+  const pattern = kind === "dashboard" ? /^db[0-9a-f]{4,20}$/ : /^w[0-9a-f]{4,20}$/;
+  return typeof x === "string" && pattern.test(x) ? x : "";
+}
+
+/** A chart's settings from the browser, kept to the fields and sizes the engine accepts (it checks the rest). */
+export function dashboardWidgetInput(widget: unknown): DashboardWidgetSpec {
+  const w = widget && typeof widget === "object" ? (widget as Record<string, unknown>) : {};
+  const text = (x: unknown, max = 80) => (typeof x === "string" ? x.slice(0, max) : undefined);
+  const num = (x: unknown) => (typeof x === "number" && Number.isFinite(x) ? x : undefined);
+  const pick = <T extends string>(x: unknown, allowed: readonly T[]) => (allowed.includes(x as T) ? (x as T) : undefined);
+  const where: Record<string, string> = {};
+  if (w.where && typeof w.where === "object") for (const [k, x] of Object.entries(w.where).slice(0, 10)) if (typeof x === "string") where[k.slice(0, 60)] = x.slice(0, 200);
+  const spec: DashboardWidgetSpec = {
+    type: pick(w.type, ["number", "bars", "trend", "list", "progress"] as const) ?? "number",
+    table: text(w.table) ?? "",
+    title: text(w.title),
+    where,
+    measure: pick(w.measure, ["count", "sum", "average", "min", "max"] as const),
+    column: text(w.column, 60),
+    date: text(w.date, 60),
+    period: pick(w.period, ["week", "month", "quarter", "year"] as const),
+    every: pick(w.every, ["day", "week", "month"] as const),
+    last: num(w.last),
+    by: text(w.by, 60),
+    limit: num(w.limit),
+    sort: text(w.sort, 60),
+    dir: pick(w.dir, ["asc", "desc"] as const),
+    show: Array.isArray(w.show) ? w.show.filter((x): x is string => typeof x === "string").slice(0, 4).map((x) => x.slice(0, 60)) : undefined,
+    goal: num(w.goal),
+    wide: w.wide === true ? true : undefined,
+  };
+  return Object.fromEntries(Object.entries(spec).filter(([, v]) => v !== undefined)) as DashboardWidgetSpec;
 }
 
 /** The file ids a chat message may carry (from the host's chatFilesUrl), up to 10. */

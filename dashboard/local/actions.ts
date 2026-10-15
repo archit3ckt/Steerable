@@ -2,7 +2,17 @@
 
 import { refresh } from "next/cache";
 import { redirect } from "next/navigation";
-import { chatFiles, chatText, checkInput, dashboardAction, dashboardActionResult, libraryCells, libraryViewInput } from "../src/host";
+import {
+  chatFiles,
+  chatText,
+  checkInput,
+  dashboardAction,
+  dashboardActionResult,
+  dashboardRef,
+  dashboardWidgetInput,
+  libraryCells,
+  libraryViewInput,
+} from "../src/host";
 import { backend } from "./host";
 
 // The owner's actions. backend() checks the session first.
@@ -156,6 +166,50 @@ export async function restorePlan(plan: string, version: number) {
 export async function removePlan(plan: string) {
   const result = await dashboardAction(backend, (b) => b.removePlan(planId(plan)));
   if (!result.error) redirect("/library");
+  return result;
+}
+
+export async function createDashboard(name: string) {
+  const result = await dashboardActionResult(backend, (b) => b.createDashboard(String(name ?? "").slice(0, 80)));
+  refresh();
+  return result;
+}
+
+export async function saveDashboard(dashboard: string, change: { name?: string; description?: string }) {
+  const c = change && typeof change === "object" ? change : {};
+  const clean = {
+    ...(typeof c.name === "string" ? { name: c.name.slice(0, 80) } : {}),
+    ...(typeof c.description === "string" ? { description: c.description.slice(0, 300) } : {}),
+  };
+  const result = await dashboardAction(backend, (b) => b.saveDashboard(dashboardRef(dashboard), clean));
+  refresh();
+  return result;
+}
+
+export async function removeDashboard(dashboard: string) {
+  const result = await dashboardAction(backend, (b) => b.removeDashboard(dashboardRef(dashboard)));
+  if (!result.error) redirect("/library");
+  return result;
+}
+
+export async function saveDashboardWidget(dashboard: string, widget: string | null, spec: unknown) {
+  const result = await dashboardAction(backend, (b) =>
+    b.saveDashboardWidget(dashboardRef(dashboard), widget ? dashboardRef(widget, "widget") : null, dashboardWidgetInput(spec)),
+  );
+  refresh();
+  return result;
+}
+
+export async function changeDashboardWidget(dashboard: string, widget: string, action: "remove" | "up" | "down") {
+  const act = action === "up" || action === "down" ? action : "remove";
+  const result = await dashboardAction(backend, (b) => b.changeDashboardWidget(dashboardRef(dashboard), dashboardRef(widget, "widget"), act));
+  refresh();
+  return result;
+}
+
+export async function askForDashboard(text: string, dashboard?: string) {
+  const result = await dashboardAction(backend, (b) => b.askForDashboard(String(text ?? "").slice(0, 2000), dashboard ? dashboardRef(dashboard) : undefined));
+  refresh();
   return result;
 }
 

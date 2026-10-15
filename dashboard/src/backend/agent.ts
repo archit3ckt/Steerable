@@ -4,6 +4,9 @@ import type {
   BackgroundStatus,
   Book,
   BookDetail,
+  DashboardAsk,
+  DashboardDetail,
+  DashboardSummary,
   Plan,
   PlanDetail,
   PlanVersionDetail,
@@ -238,6 +241,36 @@ export function agentBackend({ url, token, company }: { url: string; token: stri
     async setLibraryRowArchived(tableId, rowId, archived) {
       await call("POST", `/v1/library/tables/${id(tableId)}/rows/${id(rowId)}/${archived ? "archive" : "restore"}`, {}, WRITE_TIMEOUT_MS);
     },
+    dashboards: () => call<DashboardSummary[]>("GET", "/v1/dashboards"),
+    async dashboard(dashboardId) {
+      try {
+        return await call<DashboardDetail>("GET", `/v1/dashboards/${id(dashboardId)}`);
+      } catch (e) {
+        if (e instanceof AgentError && e.status === 404) return null;
+        throw e;
+      }
+    },
+    dashboardAsks: () => call<DashboardAsk[]>("GET", "/v1/dashboards/asks"),
+    async createDashboard(name) {
+      const made = await call<{ id: string }>("POST", "/v1/dashboards", { name }, WRITE_TIMEOUT_MS);
+      return { id: made.id };
+    },
+    async saveDashboard(dashboardId, change) {
+      await call("POST", `/v1/dashboards/${id(dashboardId)}`, change, WRITE_TIMEOUT_MS);
+    },
+    async removeDashboard(dashboardId) {
+      await call("POST", `/v1/dashboards/${id(dashboardId)}/delete`, {}, WRITE_TIMEOUT_MS);
+    },
+    async saveDashboardWidget(dashboardId, widgetId, widget) {
+      const path = `/v1/dashboards/${id(dashboardId)}/widgets${widgetId ? `/${id(widgetId)}` : ""}`;
+      const made = await call<{ id: string }>("POST", path, { widget }, WRITE_TIMEOUT_MS);
+      return { id: made.id };
+    },
+    async changeDashboardWidget(dashboardId, widgetId, action) {
+      await call("POST", `/v1/dashboards/${id(dashboardId)}/widgets/${id(widgetId)}/${action}`, {}, WRITE_TIMEOUT_MS);
+    },
+    askForDashboard: (text, dashboardId) =>
+      call<DashboardAsk>("POST", "/v1/dashboards/asks", { text, dashboard: dashboardId ?? null }, WRITE_TIMEOUT_MS),
     plans: () => call<Plan[]>("GET", "/v1/plans"),
     async plan(planId) {
       try {

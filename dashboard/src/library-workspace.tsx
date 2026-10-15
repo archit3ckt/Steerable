@@ -30,7 +30,8 @@ import { RowPanel } from "./library-panel";
 import { cx } from "./ui";
 
 /** Where the owner is in a table: the view, the search, the page, the open row, the calendar's month. In the address. */
-export type LibraryNav = { view: string; q: string; offset: number; row: string; month: string; archived: boolean };
+/** `where`: filters from the address (?where.<column>=value, as a dashboard's chart links), on top of the view's own. */
+export type LibraryNav = { view: string; q: string; offset: number; row: string; month: string; archived: boolean; where: Record<string, string> };
 
 /** What the server read for the current view. */
 export type LibraryBody =
@@ -127,6 +128,7 @@ export function LibraryWorkspace({
     if (next.offset) params.set("offset", String(next.offset));
     if (next.month) params.set("month", next.month);
     if (next.row) params.set("row", next.row);
+    for (const [k, v] of Object.entries(next.where)) params.set(`where.${k}`, v);
     const qs = params.toString();
     startNav(() => router.push(qs ? `${basePath}?${qs}` : basePath, { scroll: false }));
   };
@@ -190,7 +192,7 @@ export function LibraryWorkspace({
     if (config.sort) params.set("sort", config.sort);
     if (config.dir) params.set("dir", config.dir);
     if (nav.archived) params.set("archived", "1");
-    for (const [k, v] of Object.entries(where)) params.set(`where.${k}`, v);
+    for (const [k, v] of Object.entries({ ...where, ...nav.where })) params.set(`where.${k}`, v);
     return `${libraryFilesUrl}?${params}`;
   };
 
@@ -500,6 +502,23 @@ export function LibraryWorkspace({
             </button>
           ))}
         </div>
+      )}
+
+      {Object.keys(nav.where).length > 0 && (
+        <p className="mb-3 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border border-line bg-surface px-3 py-2 text-sm text-ink-2">
+          <span>
+            Only rows where{" "}
+            {Object.entries(nav.where).map(([k, v], i) => (
+              <span key={k}>
+                {i > 0 && " and "}
+                <strong className="font-medium text-ink">{k}</strong> is <strong className="font-medium text-ink">{v === "" ? "empty" : v}</strong>
+              </span>
+            ))}
+          </span>
+          <button type="button" onClick={() => go({ where: {}, offset: 0 })} className="font-medium text-accent hover:underline">
+            Show all
+          </button>
+        </p>
       )}
 
       {notice && (

@@ -1,7 +1,7 @@
 import { Suspense, type ReactNode } from "react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft, BookOpen, FileText, Loader2, Table2 } from "lucide-react";
+import { ArrowLeft, BookOpen, FileText, LayoutDashboard, Loader2, Table2 } from "lucide-react";
 import type { DashboardHost } from "../host";
 import { ago } from "../format";
 import { LibraryWorkspace, type LibraryBody, type LibraryNav } from "../library-workspace";
@@ -9,6 +9,7 @@ import { LibraryImport, LibrarySearch, LibrarySidebar } from "../library-sidebar
 import type { Actor, Book, BookPassage, CellValue, LibraryColumn, LibraryPage as LibraryPageData } from "../backend/types";
 import { BookActions, BookSearch, IdeaCard, Passage, TeachBook } from "../library-books";
 import { PlanEditor, RemovePlan, RestorePlan } from "../library-plans";
+import { AskForDashboard, DashboardBoard, DashboardSettings, NewDashboard, type DashboardEditActions } from "../dashboard-editor";
 import { PlanChanges, withoutTitle } from "../plan-text";
 import { Markdown } from "../markdown";
 import { Poll } from "../poll";
@@ -40,10 +41,17 @@ function LibraryFrame({ host, active, children }: { host: DashboardHost; active?
 
 async function TableList({ host, active }: { host: DashboardHost; active?: string | Promise<string> }) {
   const backend = await host.backend();
-  const [tables, books, plans, id] = await Promise.all([orNull(backend.library()), orNull(backend.books()), orNull(backend.plans()), active]);
+  const [tables, books, plans, dashboards, id] = await Promise.all([
+    orNull(backend.library()),
+    orNull(backend.books()),
+    orNull(backend.plans()),
+    orNull(backend.dashboards()),
+    active,
+  ]);
   return (
     <LibrarySidebar
       tables={tables ?? []}
+      dashboards={dashboards ?? []}
       books={books ?? []}
       plans={plans ?? []}
       active={id ? decodeURIComponent(id) : undefined}
@@ -81,6 +89,7 @@ async function Overview({ host, searchParams }: { host: DashboardHost; searchPar
         <Results host={host} q={q} />
       ) : (
         <>
+          <Dashboards host={host} />
           <Plans host={host} />
           <Books host={host} teach={one(params?.teach) === "1"} />
           <Tables host={host} />
@@ -107,6 +116,65 @@ function bookLine(b: Book): ReactNode {
 /** Who changed a plan, in words. */
 function byWhom(who: Actor, coo: string): string {
   return who === "you" ? "you" : who === "autopilot" ? "a routine" : coo;
+}
+
+/** Dashboards over the library: the ones there are, and a way to ask the COO for one (or start one). */
+async function Dashboards({ host }: { host: DashboardHost }) {
+  const backend = await host.backend();
+  const [{ company }, dashboards, asks, tables, now] = await Promise.all([
+    backend.overview(),
+    orNull(backend.dashboards()),
+    orNull(backend.dashboardAsks()),
+    orNull(backend.library()),
+    host.now(),
+  ]);
+  if (!dashboards || (!dashboards.length && !tables?.length)) return null; // nothing to count yet
+  return (
+    <section className="mb-10">
+      <h2 className="mb-3 text-sm font-medium tracking-wide text-ink-3 uppercase">Dashboards</h2>
+      {dashboards.length > 0 && (
+        <div className="mb-4 grid gap-3 sm:grid-cols-2">
+          {dashboards.map((d) => (
+            <Link key={d.id} href={`/library/dashboards/${d.id}`} className="group min-w-0">
+              <Card className="flex h-full gap-3 p-5 transition-colors group-hover:border-accent">
+                <span className="grid size-9 shrink-0 place-items-center rounded-xl bg-accent-soft text-accent">
+                  <LayoutDashboard className="size-4" aria-hidden />
+                </span>
+                <div className="min-w-0">
+                  <p className="truncate font-medium" dir="auto">
+                    {d.name}
+                  </p>
+                  {(d.description || d.titles.length > 0) && (
+                    <p className="mt-0.5 line-clamp-2 text-sm text-ink-2" dir="auto">
+                      {d.description || d.titles.join(" · ")}
+                    </p>
+                  )}
+                  <p className="mt-2 text-xs text-ink-3">
+                    {d.widgets} {d.widgets === 1 ? "chart" : "charts"} · changed {ago(d.updatedAt, now)} by {byWhom(d.updatedBy, company.cooName)}
+                  </p>
+                </div>
+              </Card>
+            </Link>
+          ))}
+        </div>
+      )}
+      <Card className="p-5">
+        <p className="mb-3 text-sm text-ink-2">
+          {dashboards.length ? "Another one? " : ""}Say what you&apos;d like to keep an eye on, and {company.cooName} makes a dashboard of it from your
+          records.
+        </p>
+        <AskForDashboard
+          asks={asks ?? []}
+          cooName={company.cooName}
+          ask={host.actions.askForDashboard}
+          placeholder="Like: new leads this month, by status, and the 5 biggest"
+        />
+        <div className="mt-3">
+          <NewDashboard create={host.actions.createDashboard} />
+        </div>
+      </Card>
+    </section>
+  );
 }
 
 /** The business's plans (business plan, marketing plan...), each kept up to date with its versions. */
@@ -406,8 +474,15 @@ async function TableView({ host, id, searchParams }: { host: DashboardHost; id: 
     row: one(params.row),
     month: /^\d{4}-\d{2}$/.test(one(params.month)) ? one(params.month) : "",
     archived: view.type === "grid" && one(params.archived) === "1",
+    where: Object.fromEntries(
+      Object.entries(params)
+        .filter(([k]) => k.startsWith("where.") && meta.columns.some((c) => c.name === k.slice(6)))
+        .slice(0, 10)
+        .map(([k, v]) => [k.slice(6), one(v).slice(0, 200)]),
+    ),
   };
-  const base = { q: nav.q || undefined, where: cfg.where, sort: cfg.sort, dir: cfg.dir };
+  const filters = { ...cfg.where, ...nav.where };
+  const base = { q: nav.q || undefined, where: filters, sort: cfg.sort, dir: cfg.dir };
   const related = { ...meta.related };
   const files = { ...meta.files };
   let body: LibraryBody;
@@ -415,7 +490,7 @@ async function TableView({ host, id, searchParams }: { host: DashboardHost; id: 
   if (view.type === "kanban" && cfg.by) {
     const by = cfg.by;
     const labels = meta.columns.find((c) => c.name === by)?.options.labels ?? [];
-    const where = { ...cfg.where };
+    const where = { ...filters };
     delete where[by];
     const pages = await Promise.all([...labels, ""].map((label) => backend.libraryTable(tableId, { ...base, where: { ...where, [by]: label }, limit: LANE_SIZE })));
     for (const p of pages) {
@@ -432,7 +507,7 @@ async function TableView({ host, id, searchParams }: { host: DashboardHost; id: 
     const start = addDays(first, -((new Date(`${first}T00:00:00Z`).getUTCDay() + 6) % 7)); // the Monday on or before the 1st
     const [page, undated] = await Promise.all([
       backend.libraryTable(tableId, { ...base, between: [cfg.by, start, addDays(start, 41)], limit: 500 }),
-      backend.libraryTable(tableId, { ...base, where: { ...cfg.where, [cfg.by]: "" }, limit: 1 }),
+      backend.libraryTable(tableId, { ...base, where: { ...filters, [cfg.by]: "" }, limit: 1 }),
     ]);
     Object.assign(related, page?.related);
     total = page?.total ?? 0;
@@ -741,3 +816,68 @@ async function PlanView({ host, id, searchParams }: { host: DashboardHost; id: s
   );
 }
 
+/** A dashboard: its charts, counted now from the library, the owner's way to add and change them, and asking the COO. */
+export function LibraryDashboardPage({ host, id }: { host: DashboardHost; id: string | Promise<string> }) {
+  return (
+    <LibraryFrame host={host} active={id}>
+      <div className="mx-auto max-w-6xl">
+        <Link href="/library" className="mb-4 inline-flex items-center gap-1.5 text-sm text-ink-3 hover:text-ink lg:hidden">
+          <ArrowLeft className="size-4" aria-hidden /> Library
+        </Link>
+        <Suspense fallback={<Skeleton className="h-[32rem]" />}>
+          <DashboardView host={host} id={id} />
+        </Suspense>
+      </div>
+    </LibraryFrame>
+  );
+}
+
+async function DashboardView({ host, id }: { host: DashboardHost; id: string | Promise<string> }) {
+  const dashboardId = decodeURIComponent(await id);
+  const backend = await host.backend();
+  const [dashboard, { company }, now] = await Promise.all([backend.dashboard(dashboardId), backend.overview(), host.now()]);
+  if (!dashboard) notFound();
+  // Only the actions these need, as a plain object (a host's actions may be a module, which can't be passed).
+  const a = host.actions;
+  const actions: DashboardEditActions = {
+    createDashboard: a.createDashboard,
+    saveDashboard: a.saveDashboard,
+    removeDashboard: a.removeDashboard,
+    saveDashboardWidget: a.saveDashboardWidget,
+    changeDashboardWidget: a.changeDashboardWidget,
+    askForDashboard: a.askForDashboard,
+  };
+  return (
+    <div className="lg:pt-4">
+      <header className="mb-6 flex flex-wrap items-start gap-4">
+        <div className="min-w-0 flex-1">
+          <p className="mb-2 inline-flex items-center gap-1.5 text-sm text-accent">
+            <LayoutDashboard className="size-4" aria-hidden /> Dashboard
+          </p>
+          <h1 className="font-display text-4xl leading-tight" dir="auto">
+            {dashboard.name}
+          </h1>
+          {dashboard.description && (
+            <p className="mt-1 text-ink-2" dir="auto">
+              {dashboard.description}
+            </p>
+          )}
+          <p className="mt-2 text-sm text-ink-3">
+            Counted from your records just now · changed {ago(dashboard.updatedAt, now)} by {byWhom(dashboard.updatedBy, company.cooName)}
+          </p>
+        </div>
+        <DashboardSettings dashboard={{ id: dashboard.id, name: dashboard.name, description: dashboard.description }} actions={actions} />
+      </header>
+      <div className="mb-6">
+        <AskForDashboard
+          dashboardId={dashboard.id}
+          asks={dashboard.asks}
+          cooName={company.cooName}
+          ask={host.actions.askForDashboard}
+          placeholder={`Ask ${company.cooName} to change it, like: add orders per week`}
+        />
+      </div>
+      <DashboardBoard dashboard={dashboard} actions={actions} />
+    </div>
+  );
+}

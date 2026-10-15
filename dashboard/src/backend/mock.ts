@@ -2,6 +2,7 @@ import type {
   BackgroundStatus,
   ChatFile,
   Check,
+  DashboardAsk,
   ChatPage,
   ChatMessage,
   Company,
@@ -20,6 +21,7 @@ import { AgentError } from "./agent";
 import { libraryOps, sampleLibrary } from "./mock-library";
 import { bookOps, sampleBooks } from "./mock-books";
 import { planOps, samplePlans } from "./mock-plans";
+import { dashboardOps, sampleDashboards } from "./mock-dashboards";
 
 /**
  * In-memory sample company for building the UI: a small plant shop with an online store
@@ -45,6 +47,8 @@ type State = {
   library: ReturnType<typeof sampleLibrary>;
   books: ReturnType<typeof sampleBooks>;
   plans: ReturnType<typeof samplePlans>;
+  dashboards: ReturnType<typeof sampleDashboards>;
+  dashboardAsks: DashboardAsk[];
   /** Tests of replies, by message id. */
   checks: Map<string, Check>;
 };
@@ -59,6 +63,8 @@ function seed(company: Company, now: number): State {
     library: sampleLibrary(now),
     books: sampleBooks(now),
     plans: samplePlans(now),
+    dashboards: sampleDashboards(now),
+    dashboardAsks: [],
     checks: new Map(),
     decisions: [
       {
@@ -308,6 +314,11 @@ export function mockBackend(company: Company): CompanyBackend {
     ...libraryOps(() => state().library),
     ...bookOps(() => (state().books ??= sampleBooks(Date.now()))),
     ...planOps(() => (state().plans ??= samplePlans(Date.now()))),
+    ...dashboardOps(
+      () => state().library,
+      () => (state().dashboards ??= sampleDashboards(Date.now())),
+      () => (state().dashboardAsks ??= []),
+    ),
     async overview() {
       const s = state();
       const weekAgo = Date.now() - 7 * DAY;

@@ -285,6 +285,96 @@ export type BookIdea = {
   /** What adding it did: "Added to your goals." */
   note: string | null;
 };
+/**
+ * A dashboard over the library (dashboards.py): charts the engine counts from library tables, made by
+ * the COO when asked or by the owner in the Library. A widget is a description, never code: what it
+ * counts (a table, filters like a view's, a measure) and how it's shown.
+ */
+export type DashboardWidgetType = "number" | "bars" | "trend" | "list" | "progress";
+export type DashboardMeasure = "count" | "sum" | "average" | "min" | "max";
+export type DashboardWidgetSpec = {
+  type: DashboardWidgetType;
+  title?: string;
+  /** The table's id (or name, when writing one). */
+  table: string;
+  /** Column: value, like a view's filters ("" = empty). */
+  where?: Record<string, string>;
+  /** Not for list. sum/average/min/max need a number column. */
+  measure?: DashboardMeasure;
+  column?: string;
+  /** A date column, or "added" (when each row was added). */
+  date?: string;
+  /** number and progress: only this period (number also shows the one before). */
+  period?: "week" | "month" | "quarter" | "year";
+  /** trend: one bar per day, week or month, the last `last` of them. */
+  every?: "day" | "week" | "month";
+  last?: number;
+  /** bars: the column they're by, and how many. list: how many rows. */
+  by?: string;
+  limit?: number;
+  /** list: its order (newest first without) and up to 4 columns. */
+  sort?: string;
+  dir?: "asc" | "desc";
+  show?: string[];
+  /** progress: the number it's working toward. */
+  goal?: number;
+  /** The whole width (trend and list are, unless false). */
+  wide?: boolean;
+};
+/** What a widget shows now; which fields depends on its type. */
+export type DashboardWidgetData = {
+  /** A number column's unit (like "$") when the measure sums or averages one. */
+  unit?: string;
+  /** number, progress */
+  value?: number | null;
+  previous?: number | null;
+  goal?: number;
+  /** bars: each value of `by` (filter: that value for the table's grid, "" for empty) */
+  items?: { label: string; value: number | null; filter: string }[];
+  by?: string;
+  more?: number;
+  /** trend: each day, week or month by its first day */
+  points?: { start: string; value: number | null }[];
+  /** list */
+  columns?: { name: string; type: LibraryColumnType; unit?: string }[];
+  rows?: { id: string; cells: Record<string, CellValue> }[];
+  total?: number;
+  related?: Record<string, string>;
+};
+export type DashboardWidget = DashboardWidgetSpec & {
+  id: string;
+  title: string;
+  tableName: string | null;
+  data?: DashboardWidgetData;
+  /** Its table or a column is gone: what to fix, in plain words. */
+  error?: string;
+};
+export type DashboardSummary = {
+  id: string;
+  name: string;
+  description: string;
+  widgets: number;
+  /** The first few charts' titles, for the Library's cards. */
+  titles: string[];
+  createdAt: ISODate;
+  updatedAt: ISODate;
+  updatedBy: Actor;
+};
+/** A table a widget can count, with its columns (for the editor). */
+export type DashboardSource = { id: string; name: string; columns: { name: string; type: LibraryColumnType; labels?: string[]; unit?: string }[] };
+/** The owner's request to the COO for a dashboard (or a change to one), worked on in the background. */
+export type DashboardAsk = {
+  id: string;
+  dashboardId: string | null;
+  text: string;
+  status: "asked" | "answered" | "failed";
+  reply: string | null;
+  /** The dashboard the COO saved for it. */
+  made: string | null;
+  at: ISODate;
+};
+export type DashboardDetail = Omit<DashboardSummary, "widgets"> & { widgets: DashboardWidget[]; sources: DashboardSource[]; asks: DashboardAsk[] };
+
 /** A plan of the business (business plan, marketing plan...): one per subject, kept up to date (plans.py). */
 export type Plan = {
   id: string;
@@ -625,6 +715,21 @@ export interface CompanyBackend {
   exportLibraryTable(tableId: string, query: LibraryQuery, format: "csv" | "xlsx"): Promise<FileContent>;
   /** A CSV or Excel file as a new table (title, else the file's name) or added to the table `into`. */
   importLibrary(name: string, data: ArrayBuffer, options?: { into?: string; title?: string }): Promise<{ table: { id: string; name: string }; added: number; skipped: number }>;
+  /** Dashboards over the library, most recently changed first. */
+  dashboards(): Promise<DashboardSummary[]>;
+  /** A dashboard with what each chart shows now, the tables it can count, and requests to the COO about it. */
+  dashboard(dashboardId: string): Promise<DashboardDetail | null>;
+  /** Recent requests to the COO for new dashboards (being worked on, or answered today). */
+  dashboardAsks(): Promise<DashboardAsk[]>;
+  /** An empty dashboard; a taken name is refused. */
+  createDashboard(name: string): Promise<{ id: string }>;
+  saveDashboard(dashboardId: string, change: { name?: string; description?: string }): Promise<void>;
+  removeDashboard(dashboardId: string): Promise<void>;
+  /** Add a chart (widgetId null, at the end) or change one in place. */
+  saveDashboardWidget(dashboardId: string, widgetId: string | null, widget: DashboardWidgetSpec): Promise<{ id: string }>;
+  changeDashboardWidget(dashboardId: string, widgetId: string, action: "remove" | "up" | "down"): Promise<void>;
+  /** Ask the COO for a dashboard, or a change to this one; it works on it in the background (and in the chat). */
+  askForDashboard(text: string, dashboardId?: string): Promise<DashboardAsk>;
   /** The business's plans, most recently changed first. */
   plans(): Promise<Plan[]>;
   plan(planId: string): Promise<PlanDetail | null>;

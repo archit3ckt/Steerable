@@ -45,7 +45,7 @@ CHAT_SCRIPTS = ["propose.py *", "change.py *", "run.py *", "ask.py *", "library.
                 "ops_db.py --show", "ops_db.py --seed", "ops_db.py --seed --show", "ops_db.py mission *", "ops_db.py goal *",
                 "ops_db.py add-mission *", "vault.py ask *", "accounts.py propose *", "accounts.py list", "integrations.py",
                 "mailbox.py *", "brief.py", "skills.py list", "files.py list", "state.py show *",
-                "books.py list", "books.py search *", "reddit.py *", "plans.py *"]
+                "books.py list", "books.py search *", "reddit.py *", "plans.py *", "dashboards.py *"]
 OWN_SPACE = ["./memory/**", "./.claude/skills/**", "./drafts/**", "./CLAUDE.md"]
 ALLOWED_TOOLS = ["Read(./**)", "Glob", "Grep", "WebSearch", "WebFetch",
                  *(f"{tool}({path})" for path in OWN_SPACE for tool in ("Edit", "Write")),
