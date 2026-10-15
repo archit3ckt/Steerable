@@ -315,6 +315,29 @@ def tables() -> list[dict]:
                  "columns": [c["name"] for c in _columns(con, t["id"])]} for t in rows]
 
 
+def search(words: str, table_name: str | None = None, limit: int = 10) -> list[dict]:
+    """Rows containing every word, in every table (or one): [{"table", "total", "rows"}], the tables
+    with the most matches first, then tables whose name or description matches (total 0, no rows).
+    The same search as the owner's Library page, all in SQL, so a big library stays quick."""
+    words = " ".join((words or "").split()[:8])
+    if not words:
+        raise LibraryError("Say what to search for.")
+    every = tables()
+    if table_name:
+        every = [t for t in every if t["name"].casefold() == table_name.strip().casefold() or t["id"] == table_name]
+        if not every:
+            raise LibraryError(f"There's no table called {table_name}.")
+    out, named = [], []
+    for info in every:
+        t = table(info["name"])
+        got = t.query(search=words, limit=max(1, min(int(limit), 100)))
+        if got["total"]:
+            out.append({"table": t.name, "total": got["total"], "rows": got["rows"]})
+        elif all(w.casefold() in f"{info['name']} {info['description']}".casefold() for w in words.split()):
+            named.append({"table": t.name, "total": 0, "rows": []})
+    return sorted(out, key=lambda x: -x["total"]) + named
+
+
 def table(name: str, columns: str = "", description: str = "") -> "Table":
     """The table with this name, created if it doesn't exist; any columns it lacks are added."""
     if not name.strip() or len(name) > 80:
@@ -867,6 +890,29 @@ def forget_details(days: int = DETAIL_DAYS) -> int:
 
 # ---------- CLI ----------
 
+def _brief(row: dict) -> dict:
+    """A row as the COO reads it: its id (and key), when it last changed, and its values; empty ones left out."""
+    return {"id": row["id"], **({"key": row["key"]} if row.get("key") else {}), "changed": (row.get("updated") or "")[:10],
+            **{k: v for k, v in row["cells"].items() if v not in (None, "", [])}}
+
+
+def _print_page(total: int, rows: list[dict], offset: int, extra: dict | None = None) -> None:
+    shown = len(rows)
+    if not total:
+        print("No rows match.")
+        return
+    head = f"{total} {'row matches' if total == 1 else 'rows match'}"
+    if shown < total:
+        head += f"; showing {offset + 1}-{offset + shown}"
+        if offset + shown < total:
+            head += f" (next: --offset {offset + shown})"
+    print(head + ".")
+    for k, v in (extra or {}).items():
+        print(f"{k}: {json.dumps(v, ensure_ascii=False)}")
+    for r in rows:
+        print(json.dumps(_brief(r), ensure_ascii=False))
+
+
 def _pairs(items: list[str]) -> dict:
     out = {}
     for item in items or []:
@@ -894,10 +940,20 @@ def main() -> int:
     u.add_argument("table")
     u.add_argument("row")
     u.add_argument("--set", nargs="+", required=True)
-    f = sub.add_parser("find")
+    se = sub.add_parser("search", help="rows containing every word, across all tables (or one)")
+    se.add_argument("words")
+    se.add_argument("--table")
+    se.add_argument("--limit", type=int, default=10, help="rows per table")
+    f = sub.add_parser("find", help="one table's rows: filters, words, a date range, sorted, a page at a time, with the total")
     f.add_argument("table")
-    f.add_argument("--where", nargs="*")
-    f.add_argument("--limit", type=int, default=50)
+    f.add_argument("--where", nargs="*", help="Column=value (exact; an empty value finds empty cells)")
+    f.add_argument("--search", default="", help="words every row must contain")
+    f.add_argument("--between", nargs=3, metavar=("DATE_COLUMN", "FROM", "TO"), help="a date column within a range, like Found 2026-10-01 2026-10-31")
+    f.add_argument("--sort", default="", help="a column (newest first when left out)")
+    f.add_argument("--desc", action="store_true")
+    f.add_argument("--limit", type=int, default=20)
+    f.add_argument("--offset", type=int, default=0)
+    f.add_argument("--archived", action="store_true")
     col = sub.add_parser("columns")
     col.add_argument("table")
     col.add_argument("--add")
@@ -930,8 +986,24 @@ def main() -> int:
             print(table(args.table).add(_pairs(args.set), key=args.key, overwrite=args.overwrite))
         elif args.cmd == "update":
             print(table(args.table).update(args.row, _pairs(args.set)))
+        elif args.cmd == "search":
+            found = search(args.words, args.table, args.limit)
+            if not found:
+                print(f"Nothing in the library contains \u201c{args.words}\u201d. Try fewer or other words, or `find` with --where.")
+            for t in found:
+                if not t["total"]:
+                    print(f"\n## {t['table']} (its name matches; no row contains the words)")
+                    continue
+                more = f", showing {len(t['rows'])}" if len(t["rows"]) < t["total"] else ""
+                print(f"\n## {t['table']}: {t['total']} {'row' if t['total'] == 1 else 'rows'}{more}")
+                for r in t["rows"]:
+                    print(json.dumps(_brief(r), ensure_ascii=False))
         elif args.cmd == "find":
-            print(json.dumps(table(args.table).rows(where=_pairs(args.where), limit=args.limit), indent=1, ensure_ascii=False))
+            t = table(args.table)
+            got = t.query(search=args.search, where=_pairs(args.where), sort=args.sort, desc=args.desc,
+                          limit=max(1, min(args.limit, 200)), offset=max(0, args.offset), archived=args.archived,
+                          between=tuple(args.between) if args.between else None)
+            _print_page(got["total"], got["rows"], max(0, args.offset), {"Totals": got["sums"]} if got["sums"] else None)
         elif args.cmd == "archive":
             table(args.table).archive(args.row)
             print("Archived. It can be brought back.")
