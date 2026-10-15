@@ -272,10 +272,12 @@ REVIEW_SCHEMA = {
 }
 
 
-def _event_line(e: dict) -> str:
+def _event_line(e: dict, names: list[str] | None = None) -> str:
     kind = e["kind"]
     if kind == "step":
-        return f"[step {e.get('step')}]"
+        n = int(e.get("step") or 0)
+        name = names[n] if names and 0 <= n < len(names) else ""
+        return f"[step {n}{': ' + name if name else ''}]"
     if kind == "browse":
         return f"browse: {e.get('what', '')} ({e.get('url', '')})"
     if kind in ("would", "did", "held"):
@@ -295,11 +297,14 @@ def _event_line(e: dict) -> str:
 def review(tid: str, workflow: str, code: str, task: str) -> dict:
     """Read a practice run's trace and the routine's code; tell the owner what it will do and what
     it doesn't seem to handle. Never fails: without a review the trace still speaks for itself."""
+    import flow
     import runtrace
 
     t = runtrace.load(tid) or {"events": []}
     events = t["events"]
-    lines = [_event_line(e) for e in events][:300]
+    names = t.get("steps") or [s["label"] for s in (flow.load(workflow) or [])]
+    lines = [_event_line(e, names) for e in events][:300]
+    printed = str(t.get("printed") or "").strip()
     pictures = [e["shot"] for e in events if e["kind"] == "would" and e.get("shot")][:4]
     pictures += [e["shot"] for e in events if e["kind"] == "browse" and e.get("shot")][-2:]
     images = []
@@ -320,8 +325,12 @@ Its code:
 {code[:20000]}
 ```
 
-What happened in the practice run, in order:
-{chr(10).join(lines) or "(it did nothing visible)"}
+What happened in the practice run, in order (reading pages and data isn't listed one by one, only clicks,
+typing, things it would do, records and messages):
+{chr(10).join(lines) or "(nothing listed)"}
+
+What it printed at the end (its own account of what it found and did):
+{printed or "(nothing)"}
 
 {"Pictures of the pages at the moments that matter are attached." if images else ""}
 

@@ -1164,6 +1164,8 @@ def trace_view(tid: str) -> dict:
         raise ApiError(404, "That run's record is gone. Practice and watched runs are kept 30 days.")
     workflow = t.get("workflow") or ""
     steps = flow.load(workflow) or []
+    if t.get("steps"):  # a practice run of a build: the names from that version's flow chart
+        steps = [{"label": label} for label in t["steps"]]
     out = []
     for e in t["events"]:
         kind, item = e["kind"], {"n": e.get("n"), "at": e.get("at")}

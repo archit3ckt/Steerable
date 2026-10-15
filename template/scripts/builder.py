@@ -441,6 +441,13 @@ def link_shared(wt: Path) -> None:
             os.symlink(ROOT / rel, wt / rel)
 
 
+def _read_json(path: Path):
+    try:
+        return json.loads(path.read_text())
+    except (OSError, ValueError):
+        return None
+
+
 def _practice(bid: str, b: dict, wt: Path) -> dict:
     return practice_run(wt, b["workflow"], b["task"], f"p{bid[1:]}{secrets.token_hex(2)}", build=bid)
 
@@ -472,7 +479,11 @@ def practice_run(wt: Path, name: str, task: str, tid: str, **about) -> dict:
         code, out, err = -1, "", "It took longer than 30 minutes."
     lines = [line for line in out.splitlines() if line.strip()]
     ok = code == 0
-    runtrace.update(tid, finished=now_iso(), ok=ok, summary=lines[-1][:200] if lines else "")
+    # The step names from this version's flow chart (a build isn't merged yet, so the app and the review
+    # can't read them from the company folder), and the end of what it printed: what it found and did.
+    steps = [str(s.get("label") or "") for s in (flow.valid(_read_json(wt / "workflows" / f"{name}.flow.json")) or [])]
+    runtrace.update(tid, finished=now_iso(), ok=ok, summary=lines[-1][:200] if lines else "",
+                    steps=steps, printed="\n".join(lines[-30:])[-3000:])
     review = supervise.review(tid, name, source, task) if ok else {}
     runtrace.update(tid, review=review)
     log_run("builder", "practice", workflow=name, trace=tid, ok=ok, exit=code, **about)

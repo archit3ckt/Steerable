@@ -81,6 +81,8 @@ builder.git("worktree", "add", "-q", str(wt), "-b", "build/apply_jobs", "HEAD")
 for shared in (".env", ".venv"):
     os.symlink(builder.ROOT / shared, wt / shared)
 (wt / "workflows/apply_jobs.py").write_text(open(".cache/routine.py").read())
+(wt / "workflows/apply_jobs.flow.json").write_text(json.dumps({"steps": [
+    {"kind": "trigger", "label": "Every 3 hours"}, {"kind": "send", "label": "Apply to new jobs"}]}))
 builder.git("-C", str(wt), "add", "workflows/")
 builder.git("-C", str(wt), "commit", "-q", "-m", "Build apply_jobs")
 task = "Apply to jobs  @workflow:apply_jobs  every:3h"
@@ -174,6 +176,10 @@ class SupervisionTest(unittest.TestCase):
         review_prompt = json.loads(self.log.read_text().splitlines()[-1])
         self.assertIn("Send the application for BI Developer at Beta", review_prompt)  # the reviewer saw the trace
         self.assertIn("act(", review_prompt)  # and the code
+        # A build isn't merged yet: its own flow chart names the steps, and the review sees what it printed.
+        self.assertIn("[step 1: Apply to new jobs]", review_prompt)
+        self.assertIn("Applied to 0 jobs", review_prompt.split("What it printed at the end")[1])
+        self.assertEqual(out["trace"]["steps"], ["Every 3 hours", "Apply to new jobs"])
 
         # 2. The owner sees it in Decisions, with the trace, before anything runs.
         tid = out["practice"]["trace"]
@@ -189,6 +195,7 @@ class SupervisionTest(unittest.TestCase):
         view = res["trace"]
         self.assertEqual(view["kind"], "practice")
         self.assertEqual([e["kind"] for e in view["events"] if e["kind"] != "step"], ["would", "would", "message"])
+        self.assertEqual([e["title"] for e in view["events"] if e["kind"] == "step"], ["Apply to new jobs"])
         self.assertIn("Job: beta-2", view["events"][1]["detail"])
         self.assertFalse((self.root / "workflows/apply_jobs.py").exists())  # not switched on yet
 
