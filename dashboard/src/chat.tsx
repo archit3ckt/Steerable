@@ -1,12 +1,13 @@
 "use client";
 
-import { Fragment, useCallback, useEffect, useLayoutEffect, useOptimistic, useRef, useState, useTransition } from "react";
+import { Fragment, useCallback, useEffect, useLayoutEffect, useOptimistic, useRef, useState, useTransition, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowDown, ArrowUp, Check, ChevronRight, FileText, Loader2, MessageSquarePlus, Paperclip, X } from "lucide-react";
 import type { ChatActivity, ChatFile, ChatMessage, ChatPage, ChatStep } from "./backend/types";
 import { dayLabel } from "./format";
 import type { DashboardActions } from "./host";
 import { ChatArtifacts } from "./chat-artifacts";
+import { CopyButton } from "./copy-button";
 import { Markdown } from "./markdown";
 import { CooAvatar, cx } from "./ui";
 
@@ -314,7 +315,7 @@ export function Chat({
           <li
             id={`m-${m.id}`}
             className={cx(
-              "flex gap-3",
+              "group/msg flex gap-3",
               (!m.at || m.at > animateAfter) && "animate-rise",
               m.from === "you" && "justify-end",
               m.id === focusId && "-mx-3 rounded-2xl bg-amber-soft/60 px-3 py-2",
@@ -332,8 +333,11 @@ export function Chat({
               <div className="flex max-w-[80%] flex-col items-end gap-1.5">
                 {m.files && m.files.length > 0 && <SentFiles files={m.files} filesUrl={filesUrl} />}
                 {m.text && (
-                  <p className="rounded-2xl rounded-br-md bg-accent px-4 py-2.5 leading-relaxed whitespace-pre-line text-accent-ink">{m.text}</p>
+                  <p className="rounded-2xl rounded-br-md bg-accent px-4 py-2.5 leading-relaxed break-words whitespace-pre-line text-accent-ink">
+                    {linked(m.text)}
+                  </p>
                 )}
+                {m.text && <CopyButton text={m.text} label="Copy your message" className={REVEAL} />}
               </div>
             ) : (
               <>
@@ -344,6 +348,7 @@ export function Chat({
                     <Markdown text={m.text} />
                   </div>
                   {m.artifacts && <ChatArtifacts artifacts={m.artifacts} plansUrl={plansUrl} changesUrl={changesUrl} />}
+                  {m.text && <CopyButton text={m.text} label={`Copy ${cooName}'s message`} className={cx("mt-0.5", REVEAL)} />}
                 </div>
               </>
             )}
@@ -530,6 +535,30 @@ export function Chat({
       <div ref={end} />
     </div>
   );
+}
+
+/** Shown on hover (and keyboard focus); always on touch screens, which have no hover. */
+const REVEAL = "opacity-0 group-hover/msg:opacity-100 focus-visible:opacity-100 [@media(hover:none)]:opacity-100";
+
+/** Web addresses in the owner's own words, as links (opened in a new tab). Trailing punctuation stays text. */
+const URL_RE = /\b(?:https?:\/\/|www\.)[^\s<>"]+[^\s<>".,:;!?'")\]]/gi;
+
+function linked(text: string): ReactNode[] {
+  const out: ReactNode[] = [];
+  let last = 0;
+  for (const m of text.matchAll(URL_RE)) {
+    const at = m.index ?? 0;
+    if (at > last) out.push(text.slice(last, at));
+    const href = m[0].startsWith("www.") ? `https://${m[0]}` : m[0];
+    out.push(
+      <a key={at} href={href} target="_blank" rel="noopener noreferrer" className="underline underline-offset-2 break-all hover:opacity-85">
+        {m[0]}
+      </a>,
+    );
+    last = at + m[0].length;
+  }
+  if (last < text.length) out.push(text.slice(last));
+  return out;
 }
 
 function Dots({ cooName }: { cooName: string }) {
