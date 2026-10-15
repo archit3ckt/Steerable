@@ -14,20 +14,21 @@ type SearchParams = Promise<Record<string, string | string[] | undefined>>;
 /**
  * The conversation: its latest messages, earlier ones as the owner scrolls up, or, with ?at=<id>,
  * the stretch around one message (a search result). With ?q=, the matches in its whole history.
+ * `notice` is the host's note above the conversation (the cloud's AI allowance), if any.
  */
-export function ChatPage({ host, searchParams }: { host: DashboardHost; searchParams?: SearchParams }) {
+export function ChatPage({ host, searchParams, notice }: { host: DashboardHost; searchParams?: SearchParams; notice?: ReactNode }) {
   return (
     <Suspense fallback={<Skeleton className="mx-auto h-[60vh] max-w-3xl" />}>
       <ChatSplit plansUrl={host.plansUrl}>
         <Suspense fallback={<Skeleton className="h-[60vh]" />}>
-          <Conversation host={host} searchParams={searchParams} />
+          <Conversation host={host} searchParams={searchParams} notice={notice} />
         </Suspense>
       </ChatSplit>
     </Suspense>
   );
 }
 
-async function Conversation({ host, searchParams }: { host: DashboardHost; searchParams?: SearchParams }) {
+async function Conversation({ host, searchParams, notice }: { host: DashboardHost; searchParams?: SearchParams; notice?: ReactNode }) {
   const params = await searchParams;
   const one = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v);
   const q = one(params?.q)?.trim().slice(0, 200) ?? "";
@@ -47,6 +48,7 @@ async function Conversation({ host, searchParams }: { host: DashboardHost; searc
       >
         <SearchBox q={q} />
       </PageHeader>
+      {notice}
       {found ? (
         <Results q={q} found={found} cooName={company.cooName} now={now} filesUrl={host.chatFilesUrl} />
       ) : (
