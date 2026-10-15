@@ -159,7 +159,7 @@ def recover_stale() -> list[str]:
             live_path(b["id"]).unlink(missing_ok=True)
             git("worktree", "remove", "--force", str(WORKTREES / b["id"]), check_=False)
             new = _open(b["workflow"], b["task"], exists=changing, change=b.get("change"),
-                        feedback=b.get("feedback"), base=b.get("base"))
+                        feedback=b.get("feedback"), base=b.get("base"), fixes=b.get("fixes"), rounds=b.get("rounds"))
             if new:
                 update(new, resumed=True)
                 done.append(f"{b['id']}: started again as {new}")
@@ -232,13 +232,23 @@ def _accounts() -> str:
 
 
 def _feedback(b: dict) -> str:
-    if not b.get("feedback"):
-        return ""
-    return f"""
+    out = ""
+    if b.get("feedback"):
+        out += f"""
 The owner looked at the practice run of your last version and asked for this: {b['feedback']}
 Your last version is already in the worktree (committed on the branch). Change it to do what they asked, keep
 what they didn't mention, test it again and commit.
 """
+    if b.get("fixes"):
+        gaps = "\n".join(f"- {f}" for f in b["fixes"])
+        out += f"""
+Your last version ran once as a practice run, and a review of it found these gaps:
+{gaps}
+Your last version is already in the worktree (committed on the branch). Fix them yourself: the owner never sees this
+list, so don't ask them about any of it unless it truly needs something only they can give. Keep what works, test
+again and commit.
+"""
+    return out
 
 
 def _change_prompt(b: dict, wt: str) -> str:
@@ -341,6 +351,25 @@ How to work:
 """
 
 
+AUTO_FIX_ROUNDS = 2  # attempts that fix what a practice run's review found, before the owner sees it
+
+
+def _auto_fix(bid: str, b: dict, fields: dict, review: dict, rounds: int, cost: float) -> None:
+    """A new attempt from this one, with the review's fixes as its brief. Nothing reaches the owner."""
+    name = b["workflow"]
+    branch, base = f"build/{name}", f"build/{name}-was"
+    _cleanup(bid, name, keep_branch=True)
+    if b.get("base"):
+        git("branch", "-D", b["base"], check_=False)
+    git("branch", "-D", base, check_=False)
+    git("branch", "-m", branch, base)
+    update(bid, status="revised", finished=now_iso(), review=review, **fields)
+    live_path(bid).unlink(missing_ok=True)
+    log_run("builder", "auto_fix", cost_usd=cost, build=bid, workflow=name, round=rounds + 1, fixes=review["fixes"])
+    _open(name, b["task"], exists=bool(b.get("change")), change=b.get("change"), feedback=b.get("feedback"),
+          fixes=review["fixes"], base=base, rounds=rounds + 1)
+
+
 def build(bid: str) -> None:
     b = update(bid, pid=os.getpid())  # so recover_stale can tell a build a restart killed from a slow one
     try:
@@ -406,6 +435,11 @@ def build(bid: str) -> None:
     if status == "built":  # the owner sees a practice run before anything is switched on
         practice = _practice(bid, b, wt)
         fields["trace"] = practice["trace"]
+        rounds = int(b.get("rounds") or 0)
+        if practice["ok"] and practice["review"].get("fixes") and rounds < AUTO_FIX_ROUNDS:
+            # The owner hears the big picture only: gaps the review found are ours to fix, then practise again.
+            _auto_fix(bid, b, fields, practice["review"], rounds, cost)
+            return
         if practice["ok"]:
             status, fields["review"] = "ready", practice["review"]
         else:

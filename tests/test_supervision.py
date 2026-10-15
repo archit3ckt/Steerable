@@ -95,6 +95,36 @@ builder.update("b1234abcd", status="ready", trace=p["trace"], review=p["review"]
 print(json.dumps({"practice": p, "trace": runtrace.load(p["trace"]), "rows": apps.count()}))
 """
 
+AUTO_FIX = r"""
+import json, os, subprocess, sys
+sys.path.insert(0, "scripts")
+import builder
+started = []
+real_popen = subprocess.Popen
+def popen(cmd, *a, **k):  # the next attempt isn't run here; everything else (git) is
+    if "build" in cmd and str(cmd[1]).endswith("builder.py"):
+        return started.append(cmd)
+    return real_popen(cmd, *a, **k)
+builder.subprocess.Popen = popen
+wt = builder.WORKTREES / "b5678abcd"
+wt.parent.mkdir(parents=True, exist_ok=True)
+builder.git("worktree", "add", "-q", str(wt), "-b", "build/apply_jobs", "HEAD")
+(wt / "workflows/apply_jobs.py").write_text(open(".cache/routine.py").read())
+builder.git("-C", str(wt), "add", "workflows/")
+builder.git("-C", str(wt), "commit", "-q", "-m", "Build apply_jobs")
+task = "Apply to jobs  @workflow:apply_jobs  every:3h"
+with builder._state() as s:
+    s["b5678abcd"] = {"id": "b5678abcd", "workflow": "apply_jobs", "task": task, "title": "Apply to jobs",
+                      "status": "building", "opened": "2026-10-13T08:00:00+00:00"}
+review = {"summary": "Applies to jobs", "fixes": ["It reads no jobs when the board's page changes; stop and report instead."], "concerns": []}
+builder._auto_fix("b5678abcd", builder.load()["b5678abcd"], {"trace": "p1"}, review, 0, 0.5)
+builds = builder.load()
+new = next(b for b in builds.values() if b["id"] != "b5678abcd")
+branches = builder.git("branch", "--list", "build/*")
+print(json.dumps({"old": builds["b5678abcd"]["status"], "new": {k: new.get(k) for k in ("status", "fixes", "rounds", "base")},
+                  "branches": branches, "started": len(started), "prompt": builder._prompt(new, str(wt))}))
+"""
+
 API = r"""
 import json, sys
 sys.path.insert(0, "scripts")
@@ -160,6 +190,19 @@ class SupervisionTest(unittest.TestCase):
 
     def api(self, **cmd) -> dict:
         return self.py(API, json.dumps(cmd))
+
+    def test_review_gaps_go_back_to_the_builder(self):
+        # The owner hears the big picture only: what the review found is fixed in another attempt, unseen.
+        out = self.py(AUTO_FIX)
+        self.assertEqual(out["old"], "revised")
+        self.assertEqual(out["new"], {"status": "building", "fixes": ["It reads no jobs when the board's page changes; stop and report instead."],
+                                      "rounds": 1, "base": "build/apply_jobs-was"})
+        self.assertIn("build/apply_jobs-was", out["branches"])
+        self.assertEqual(out["started"], 1)
+        self.assertIn("the owner never sees", out["prompt"])
+        self.assertIn("stop and report instead", out["prompt"])
+        decisions = self.api()["decisions"]
+        self.assertFalse([d for d in decisions if d["id"].startswith("build:")])  # nothing for the owner yet
 
     def test_practice_switch_on_watch_hold_and_trust(self):
         # 1. Practice run: nothing done, everything noted, and reviewed.

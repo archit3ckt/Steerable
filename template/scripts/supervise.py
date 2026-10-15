@@ -264,10 +264,12 @@ REVIEW_SCHEMA = {
     "type": "object",
     "properties": {
         "summary": {"type": "string", "description": "what it will do each time it runs, at most 3 short plain sentences for the owner"},
+        "fixes": {"type": "array", "items": {"type": "string"},
+                  "description": "gaps the builder fixes itself before the owner sees anything: specific, technical is fine; empty if none"},
         "concerns": {"type": "array", "items": {"type": "string"},
-                     "description": "situations it doesn't seem to handle, or things in the practice run that look wrong; one plain sentence each; empty if none"},
+                     "description": "only what needs the owner's own decision or action, in plain words for a busy non-technical owner; usually empty"},
     },
-    "required": ["summary", "concerns"],
+    "required": ["summary", "fixes", "concerns"],
     "additionalProperties": False,
 }
 
@@ -335,19 +337,26 @@ What it printed at the end (its own account of what it found and did):
 {"Pictures of the pages at the moments that matter are attached." if images else ""}
 
 summary: what it will do each time it runs, at most 3 short sentences in plain words (no code words, no file names), with numbers from
-the practice run ("It would have applied to 3 jobs and skipped 2 you'd already applied to").
-concerns: real gaps only, at most 5, the most important first, each a plain sentence the owner understands. Look especially at things it can't undo:
-does it check its own records and the page before acting (already done, closed, changed, a duplicate)? Does it
-make sure it worked afterwards? What happens when a page looks different from what it expects: does it stop and
-ask, or carry on? Anything sent to a website without asking first? Anything in the practice run that looks
-wrong (empty fields, wrong recipients, placeholder text)? No concerns about style or code quality."""
+the practice run ("It would have applied to 3 jobs and skipped 2 you'd already applied to"). Big picture only.
+fixes: real gaps only, at most 5, the most important first. These go back to the builder, which fixes them and runs the
+practice again; the owner never reads them, so be specific (technical words are fine). Look especially at things it
+can't undo: does it check its own records and the page before acting (already done, closed, changed, a duplicate)? Does
+it make sure it worked afterwards? What happens when a page looks different from what it expects: does it stop and
+ask, or carry on? Anything sent to a website without asking first? Anything in the practice run that looks wrong
+(empty fields, wrong recipients, placeholder text, finding nothing at all where it should find something)? No fixes
+about style or code quality.
+concerns: what only the owner can settle, in plain words for a busy owner who isn't technical: a choice about their
+business the routine can't make for them, something it does in their name they should know before it starts
+(contacting people, spending money), or something only they can give (a login, a connection). Never technical
+gaps: those are fixes. Usually empty."""
     try:
         out = _ask(prompt, images, REVIEW_SCHEMA, "supervisor", cap_usd="0.60")
         return {"summary": str(out.get("summary") or "")[:1200],
-                "concerns": [str(c)[:300] for c in (out.get("concerns") or [])][:5]}
+                "fixes": [str(c)[:500] for c in (out.get("fixes") or [])][:5],
+                "concerns": [str(c)[:300] for c in (out.get("concerns") or [])][:3]}
     except Exception as e:  # noqa: BLE001
         log_run("supervise", "review_error", workflow=workflow, error=repr(e)[:300])
-        return {"summary": "", "concerns": []}
+        return {"summary": "", "fixes": [], "concerns": []}
 
 
 # ---------- after a watched run ----------
