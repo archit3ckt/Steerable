@@ -247,42 +247,5 @@
     "mcp": {
       "url": "https://mcp.zapier.com/api/v1/connect"
     }
-  },
-  "apify": {
-    "name": "Apify",
-    "description": "Web scraping: thousands of ready-made scrapers for maps, shops, social media and any website.",
-    "category": "Websites and research",
-    "uses": [
-      "Collecting leads from Google Maps",
-      "Watching competitors' prices",
-      "Pulling reviews"
-    ],
-    "auth": {
-      "type": "mcp-oauth"
-    },
-    "mcp": {
-      "url": "https://mcp.apify.com"
-    }
-  },
-  "firecrawl": {
-    "name": "Firecrawl",
-    "description": "Read any website: pages, search results and whole sites, turned into clean text.",
-    "category": "Websites and research",
-    "uses": [
-      "Watching a page for changes",
-      "Researching a market",
-      "Reading a supplier's catalog"
-    ],
-    "auth": {
-      "type": "apikey",
-      "optional": true,
-      "keyLabel": "API key (optional)",
-      "keyHint": "It works without one, with limits. For more, create a key at firecrawl.dev/app/api-keys.",
-      "keyPattern": "^fc-[A-Za-z0-9]{8,}$",
-      "urlFormat": "https://mcp.firecrawl.dev/{key}/v2/mcp"
-    },
-    "mcp": {
-      "url": "https://mcp.firecrawl.dev/v2/mcp"
-    }
   }
 }

@@ -198,7 +198,8 @@ class ToolsTest(unittest.TestCase):
         self.assertEqual(status, 200)
         ids = [c["id"] for c in body["catalog"]]
         self.assertIn("notion", ids)
-        self.assertIn("firecrawl", ids)
+        self.assertIn("stripe", ids)
+        self.assertNotIn("apify", ids)
         self.assertNotIn("slack", ids)  # needs a registered app: not for self-hosters
         self.assertEqual(body["connected"], [])
         self.assertFalse(body["claudeAccount"])  # the fake claude has no account
