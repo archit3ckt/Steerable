@@ -86,6 +86,11 @@ export type DashboardActions = {
   setBookPaused(bookId: string, paused: boolean): Promise<ActionResult>;
   retryBook(bookId: string): Promise<ActionResult>;
   removeBook(bookId: string): Promise<ActionResult>;
+  /** The owner's edit of a plan: a new version. */
+  savePlan(planId: string, body: string, note: string): Promise<ActionResult>;
+  restorePlan(planId: string, version: number): Promise<ActionResult>;
+  /** Archives it and goes back to the library. */
+  removePlan(planId: string): Promise<ActionResult>;
 };
 
 /** Actions return { error } instead of throwing: in production Next hides thrown messages. */

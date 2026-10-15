@@ -1,17 +1,18 @@
 import { Suspense, type ReactNode } from "react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft, BookOpen, Loader2, Table2 } from "lucide-react";
+import { ArrowLeft, BookOpen, FileText, Loader2, Table2 } from "lucide-react";
 import type { DashboardHost } from "../host";
 import { ago } from "../format";
 import { LibraryWorkspace, type LibraryBody, type LibraryNav } from "../library-workspace";
 import { LibraryImport, LibrarySearch, LibrarySidebar } from "../library-sidebar";
-import type { Book, BookPassage, CellValue, LibraryColumn, LibraryPage as LibraryPageData } from "../backend/types";
+import type { Actor, Book, BookPassage, CellValue, LibraryColumn, LibraryPage as LibraryPageData, PlanChange } from "../backend/types";
 import { BookActions, BookSearch, IdeaCard, Passage, TeachBook } from "../library-books";
+import { PlanEditor, RemovePlan, RestorePlan } from "../library-plans";
 import { Markdown } from "../markdown";
 import { Poll } from "../poll";
 import { orNull } from "../shell";
-import { Card, Empty, PageHeader, Skeleton } from "../ui";
+import { Card, Empty, PageHeader, Skeleton, cx } from "../ui";
 
 type SearchParams = Promise<Record<string, string | string[] | undefined>>;
 
@@ -38,8 +39,16 @@ function LibraryFrame({ host, active, children }: { host: DashboardHost; active?
 
 async function TableList({ host, active }: { host: DashboardHost; active?: string | Promise<string> }) {
   const backend = await host.backend();
-  const [tables, books, id] = await Promise.all([orNull(backend.library()), orNull(backend.books()), active]);
-  return <LibrarySidebar tables={tables ?? []} books={books ?? []} active={id ? decodeURIComponent(id) : undefined} canTeach={Boolean(host.chatFilesUrl)} />;
+  const [tables, books, plans, id] = await Promise.all([orNull(backend.library()), orNull(backend.books()), orNull(backend.plans()), active]);
+  return (
+    <LibrarySidebar
+      tables={tables ?? []}
+      books={books ?? []}
+      plans={plans ?? []}
+      active={id ? decodeURIComponent(id) : undefined}
+      canTeach={Boolean(host.chatFilesUrl)}
+    />
+  );
 }
 
 /** The library: the tables of records the COO and its routines keep (job openings, leads, orders). */
@@ -71,6 +80,7 @@ async function Overview({ host, searchParams }: { host: DashboardHost; searchPar
         <Results host={host} q={q} />
       ) : (
         <>
+          <Plans host={host} />
           <Books host={host} teach={one(params?.teach) === "1"} />
           <Tables host={host} />
         </>
@@ -91,6 +101,47 @@ function bookLine(b: Book): ReactNode {
   if (b.status === "paused") return "Paused: its skills are set aside";
   if (b.waiting) return <span className="font-medium text-accent">{b.waiting} {b.waiting === 1 ? "idea" : "ideas"} waiting for you</span>;
   return `Learned: ${b.approved} ${b.approved === 1 ? "idea" : "ideas"} added`;
+}
+
+/** Who changed a plan, in words. */
+function byWhom(who: Actor, coo: string): string {
+  return who === "you" ? "you" : who === "autopilot" ? "a routine" : coo;
+}
+
+/** The business's plans (business plan, marketing plan...), each kept up to date with its versions. */
+async function Plans({ host }: { host: DashboardHost }) {
+  const backend = await host.backend();
+  const [{ company }, plans] = await Promise.all([backend.overview(), orNull(backend.plans())]);
+  if (!plans?.length) return null;
+  return (
+    <section className="mb-10">
+      <h2 className="mb-3 text-sm font-medium tracking-wide text-ink-3 uppercase">Plans</h2>
+      <div className="grid gap-3 sm:grid-cols-2">
+        {plans.map((p) => (
+          <Link key={p.id} href={`/library/plans/${p.id}`} className="group min-w-0">
+            <Card className="flex h-full gap-3 p-5 transition-colors group-hover:border-accent">
+              <span className="grid size-9 shrink-0 place-items-center rounded-xl bg-accent-soft text-accent">
+                <FileText className="size-4" aria-hidden />
+              </span>
+              <div className="min-w-0">
+                <p className="truncate font-medium" dir="auto">
+                  {p.title}
+                </p>
+                {p.summary && (
+                  <p className="mt-0.5 line-clamp-2 text-sm text-ink-2" dir="auto">
+                    {p.summary}
+                  </p>
+                )}
+                <p className="mt-2 text-xs text-ink-3">
+                  Version {p.version} · changed {ago(p.updatedAt)} by {byWhom(p.updatedBy, company.cooName)}
+                </p>
+              </div>
+            </Card>
+          </Link>
+        ))}
+      </div>
+    </section>
+  );
 }
 
 /** Books the owner taught the COO, and the way to teach one. */
@@ -565,5 +616,166 @@ async function BookView({ host, id, searchParams }: { host: DashboardHost; id: s
         <BookActions bookId={book.id} title={book.title} status={book.status} actions={host.actions} />
       </footer>
     </article>
+  );
+}
+
+/** A plan: the current text (editable), every version with who changed it and why, and any version's changes with a way back. */
+export function LibraryPlanPage({ host, id, searchParams }: { host: DashboardHost; id: string | Promise<string>; searchParams?: SearchParams }) {
+  return (
+    <LibraryFrame host={host} active={id}>
+      <div className="mx-auto max-w-6xl">
+        <Link href="/library" className="mb-4 inline-flex items-center gap-1.5 text-sm text-ink-3 hover:text-ink lg:hidden">
+          <ArrowLeft className="size-4" aria-hidden /> Library
+        </Link>
+        <Suspense fallback={<Skeleton className="h-[32rem]" />}>
+          <PlanView host={host} id={id} searchParams={searchParams} />
+        </Suspense>
+      </div>
+    </LibraryFrame>
+  );
+}
+
+async function PlanView({ host, id, searchParams }: { host: DashboardHost; id: string | Promise<string>; searchParams?: SearchParams }) {
+  const planId = decodeURIComponent(await id);
+  const params = await searchParams;
+  const backend = await host.backend();
+  const [plan, { company }] = await Promise.all([backend.plan(planId), backend.overview()]);
+  if (!plan) notFound();
+  const coo = company.cooName;
+  const asked = Number.parseInt(one(params?.v), 10);
+  const shown = Number.isFinite(asked) && asked !== plan.version ? await backend.planVersion(plan.id, asked) : null;
+  const whole = one(params?.whole) === "1";
+  const last = plan.versions[0];
+  return (
+    <div className="grid gap-10 lg:grid-cols-[minmax(0,1fr)_17rem] lg:pt-4">
+      <article className="min-w-0">
+        <header className="mb-6">
+          <p className="mb-2 inline-flex items-center gap-1.5 text-sm text-accent">
+            <FileText className="size-4" aria-hidden /> Plan
+          </p>
+          <h1 className="font-display text-4xl leading-tight" dir="auto">
+            {plan.title}
+          </h1>
+          <p className="mt-2 text-sm text-ink-3">
+            Version {plan.version} · changed {ago(plan.updatedAt)} by {byWhom(plan.updatedBy, coo)}
+            {last?.note ? `: ${last.note}` : ""}
+          </p>
+        </header>
+
+        {shown ? (
+          <section>
+            <Card className="mb-5 flex flex-wrap items-center justify-between gap-4 p-5">
+              <div>
+                <p className="font-medium">Version {shown.n}</p>
+                <p className="text-sm text-ink-2">
+                  {ago(shown.at)} by {byWhom(shown.who, coo)}
+                  {shown.note ? `: ${shown.note}` : ""}
+                </p>
+              </div>
+              <RestorePlan planId={plan.id} version={shown.n} restore={host.actions.restorePlan} />
+            </Card>
+            <div className="mb-3 flex gap-4 text-sm">
+              <Link href={`/library/plans/${plan.id}?v=${shown.n}`} className={whole ? "text-ink-3 hover:text-ink" : "font-medium text-ink"}>
+                What it changed
+              </Link>
+              <Link href={`/library/plans/${plan.id}?v=${shown.n}&whole=1`} className={whole ? "font-medium text-ink" : "text-ink-3 hover:text-ink"}>
+                The whole version
+              </Link>
+            </div>
+            {whole ? (
+              <Card className="p-6">
+                <div dir="auto">
+                  <Markdown text={shown.body} />
+                </div>
+              </Card>
+            ) : (
+              <Changes changes={shown.changes} first={shown.n === 1} />
+            )}
+          </section>
+        ) : (
+          <PlanEditor planId={plan.id} body={plan.body} save={host.actions.savePlan}>
+            <Card className="p-6">
+              <div dir="auto">
+                <Markdown text={plan.body} />
+              </div>
+            </Card>
+          </PlanEditor>
+        )}
+        <div className="mt-10 border-t border-line pt-5">
+          <RemovePlan planId={plan.id} title={plan.title} remove={host.actions.removePlan} />
+        </div>
+      </article>
+
+      <aside>
+        <h2 className="mb-3 text-sm font-medium tracking-wide text-ink-3 uppercase">History</h2>
+        <ol className="space-y-1">
+          {plan.versions.map((v) => {
+            const current = v.n === plan.version;
+            const selected = shown ? shown.n === v.n : current;
+            return (
+              <li key={v.n}>
+                <Link
+                  href={current ? `/library/plans/${plan.id}` : `/library/plans/${plan.id}?v=${v.n}`}
+                  aria-current={selected ? "page" : undefined}
+                  className={cx("block rounded-xl px-3 py-2.5 text-sm transition-colors", selected ? "bg-surface shadow-sm" : "hover:bg-surface-2")}
+                >
+                  <span className="flex items-baseline justify-between gap-2">
+                    <span className="font-medium">
+                      Version {v.n}
+                      {current && <span className="ml-1.5 text-xs font-normal text-accent">current</span>}
+                    </span>
+                    <span className="shrink-0 text-xs text-ink-3">{ago(v.at)}</span>
+                  </span>
+                  <span className="mt-0.5 block text-ink-2">
+                    {v.restoredFrom ? `Back to version ${v.restoredFrom}` : v.note || "No note"}{" "}
+                    <span className="text-ink-3">· {byWhom(v.who, coo)}</span>
+                  </span>
+                </Link>
+              </li>
+            );
+          })}
+        </ol>
+      </aside>
+    </div>
+  );
+}
+
+/** What a version changed: added lines in green, removed ones struck through in rose, the rest folded. */
+function Changes({ changes, first }: { changes: PlanChange[]; first: boolean }) {
+  if (!changes.length) {
+    return (
+      <Empty icon={<FileText className="size-5" aria-hidden />} title="No changes">
+        This version says the same as the one before.
+      </Empty>
+    );
+  }
+  return (
+    <Card className="overflow-hidden py-2 font-mono text-sm leading-relaxed">
+      {first && <p className="px-5 pb-2 font-sans text-sm text-ink-3">The first version: all of it is new.</p>}
+      {changes.map((c, k) =>
+        c.op === "skip" ? (
+          <p key={k} className="px-5 py-1 font-sans text-xs text-ink-3">
+            {c.count} unchanged {c.count === 1 ? "line" : "lines"}
+          </p>
+        ) : (
+          <p
+            key={k}
+            dir="auto"
+            className={cx(
+              "min-h-[1.6em] px-5 whitespace-pre-wrap",
+              c.op === "add" && "bg-accent-soft text-ink",
+              c.op === "del" && "bg-rose-soft text-ink-2 line-through decoration-rose/60",
+              c.op === "same" && "text-ink-3",
+            )}
+          >
+            <span aria-hidden className="mr-3 inline-block w-3 select-none">
+              {c.op === "add" ? "+" : c.op === "del" ? "−" : ""}
+            </span>
+            <span className="sr-only">{c.op === "add" ? "Added: " : c.op === "del" ? "Removed: " : ""}</span>
+            {c.text}
+          </p>
+        ),
+      )}
+    </Card>
   );
 }

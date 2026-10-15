@@ -4,6 +4,9 @@ import type {
   BackgroundStatus,
   Book,
   BookDetail,
+  Plan,
+  PlanDetail,
+  PlanVersionDetail,
   BookPassage,
   ChatActivity,
   ChatFile,
@@ -233,6 +236,32 @@ export function agentBackend({ url, token, company }: { url: string; token: stri
     },
     async setLibraryRowArchived(tableId, rowId, archived) {
       await call("POST", `/v1/library/tables/${id(tableId)}/rows/${id(rowId)}/${archived ? "archive" : "restore"}`, {}, WRITE_TIMEOUT_MS);
+    },
+    plans: () => call<Plan[]>("GET", "/v1/plans"),
+    async plan(planId) {
+      try {
+        return await call<PlanDetail>("GET", `/v1/plans/${id(planId)}`);
+      } catch (e) {
+        if (e instanceof AgentError && e.status === 404) return null;
+        throw e;
+      }
+    },
+    async planVersion(planId, version) {
+      try {
+        return await call<PlanVersionDetail>("GET", `/v1/plans/${id(planId)}/versions/${Math.trunc(version)}`);
+      } catch (e) {
+        if (e instanceof AgentError && e.status === 404) return null;
+        throw e;
+      }
+    },
+    async savePlan(planId, body, note) {
+      await call("POST", `/v1/plans/${id(planId)}`, { body, note }, WRITE_TIMEOUT_MS);
+    },
+    async restorePlan(planId, version) {
+      await call("POST", `/v1/plans/${id(planId)}/restore`, { version }, WRITE_TIMEOUT_MS);
+    },
+    async removePlan(planId) {
+      await call("POST", `/v1/plans/${id(planId)}/delete`, {}, WRITE_TIMEOUT_MS);
     },
     books: () => call<Book[]>("GET", "/v1/books"),
     async book(bookId, q) {

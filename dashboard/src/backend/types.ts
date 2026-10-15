@@ -285,6 +285,30 @@ export type BookIdea = {
   /** What adding it did: "Added to your goals." */
   note: string | null;
 };
+/** A plan of the business (business plan, marketing plan...): one per subject, kept up to date (plans.py). */
+export type Plan = {
+  id: string;
+  title: string;
+  /** business, marketing, sales, financial, operations, hiring, product, launch, customer or other. */
+  kind: string;
+  /** The current version's number; every save adds one. */
+  version: number;
+  createdAt: ISODate;
+  updatedAt: ISODate;
+  updatedBy: Actor;
+  /** Why the last version was saved, in a sentence. */
+  note: string;
+  /** Its first line of text. */
+  summary: string;
+  words: number;
+};
+
+export type PlanVersion = { n: number; at: ISODate; who: Actor; note: string; restoredFrom?: number | null };
+export type PlanDetail = Plan & { body: string; versions: PlanVersion[] };
+/** One line of what a version changed; "skip" folds unchanged lines away. */
+export type PlanChange = { op: "same" | "add" | "del"; text: string } | { op: "skip"; count: number };
+export type PlanVersionDetail = PlanVersion & { body: string; changes: PlanChange[] };
+
 export type BookPassage = { book: string; bookId: string; chapter: number; chapterTitle: string; passage: string };
 export type BookDetail = Book & {
   proposals: BookIdea[];
@@ -546,6 +570,16 @@ export interface CompanyBackend {
   exportLibraryTable(tableId: string, query: LibraryQuery, format: "csv" | "xlsx"): Promise<FileContent>;
   /** A CSV or Excel file as a new table (title, else the file's name) or added to the table `into`. */
   importLibrary(name: string, data: ArrayBuffer, options?: { into?: string; title?: string }): Promise<{ table: { id: string; name: string }; added: number; skipped: number }>;
+  /** The business's plans, most recently changed first. */
+  plans(): Promise<Plan[]>;
+  plan(planId: string): Promise<PlanDetail | null>;
+  /** One version of a plan: its text and what it changed from the one before. */
+  planVersion(planId: string, version: number): Promise<PlanVersionDetail | null>;
+  /** The owner's edit: a new version. */
+  savePlan(planId: string, body: string, note?: string): Promise<void>;
+  /** An earlier version made current again, as a new version. */
+  restorePlan(planId: string, version: number): Promise<void>;
+  removePlan(planId: string): Promise<void>;
   /** Books the owner taught the COO, newest first. */
   books(): Promise<Book[]>;
   /** One book; with q, the passages matching it. Null if there's no such book. */

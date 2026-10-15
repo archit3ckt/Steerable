@@ -51,6 +51,9 @@ Every request except GET /health needs `Authorization: Bearer <AGENT_API_TOKEN>`
     GET  /v1/books; POST /v1/books {file, why, title?, author?}  books the owner teaches the COO (books.py)
     GET  /v1/books/<id>?q=  a book: its notes, ideas waiting for the owner, and passages matching q
     POST /v1/books/<id>/proposals/<idea> {approve}; .../paused {paused}; .../retry; .../delete
+    GET  /v1/plans; GET /v1/plans/<id>   the business's plans (plans.py), one per subject, with their versions
+    GET  /v1/plans/<id>/versions/<n>     a version's text and what it changed
+    POST /v1/plans/<id> {body, note}; POST /v1/plans/<id>/restore {version}; POST /v1/plans/<id>/delete
     GET  /v1/runs/<run>/changes        what a routine run or chat turn changed in the library (?table&after&limit)
     GET  /v1/status                    what's running in the background (routines, chat, builds, fixes, its own jobs)
     GET  /v1/export                    the company's files as a .tar.gz (no secrets, caches or sessions)
@@ -121,6 +124,7 @@ import heartbeat
 import incident
 import integrations
 import books
+import plans
 import library
 import library_io
 import mailbox
@@ -1745,6 +1749,43 @@ def _books(fn, *args):
         raise ApiError(404 if "no such book" in str(e) else 400, str(e)) from None
 
 
+def _plans(fn, *args):
+    try:
+        return fn(*args)
+    except plans.PlanError as e:
+        raise ApiError(404 if "no such plan" in str(e) else 400, str(e)) from None
+
+
+def plan_detail(pid: str) -> dict:
+    found = plans.detail(pid)
+    if not found:
+        raise ApiError(404, "There's no such plan.")
+    return found
+
+
+def plan_version(pid: str, n: str) -> dict:
+    found = plans.version(pid, int(n))
+    if not found:
+        raise ApiError(404, "There's no such version.")
+    return found
+
+
+def edit_plan(pid: str, b: dict) -> dict:
+    """The owner's own edit: a new version, by "you". A shorter plan is fine when they write it."""
+    note = (b.get("note") or "") if isinstance(b.get("note"), str) else ""
+    out = _plans(plans.save, "", body_field(b, "body", str), note.strip()[:500] or "Edited by you", "you", pid, None, False, True)
+    if out["changed"]:
+        record_event(f"You changed “{out['plan']['title']}”", who="CEO")
+    return out["plan"]
+
+
+def restore_plan(pid: str, b: dict) -> dict:
+    n = body_field(b, "version", int)
+    p = _plans(plans.restore, pid, n, "you")
+    record_event(f"You brought “{p['title']}” back to version {n}", who="CEO")
+    return p
+
+
 def book_detail(bid: str, q: dict) -> dict:
     found = _books(books.detail, bid)
     if not found:
@@ -2020,6 +2061,12 @@ ROUTES = [
     ("POST", r"/v1/extension/status", lambda q, b: extension_sites(b)),
     ("GET", r"/v1/telegram", lambda q, b: telegram.status()),
     ("GET", r"/v1/library", lambda q, b: library.tables()),
+    ("GET", r"/v1/plans", lambda q, b: plans.plans()),
+    ("GET", r"/v1/plans/(?P<pid>pl[0-9a-f]+)", lambda q, b, pid: plan_detail(pid)),
+    ("GET", r"/v1/plans/(?P<pid>pl[0-9a-f]+)/versions/(?P<n>[0-9]{1,6})", lambda q, b, pid, n: plan_version(pid, n)),
+    ("POST", r"/v1/plans/(?P<pid>pl[0-9a-f]+)", lambda q, b, pid: edit_plan(pid, b)),
+    ("POST", r"/v1/plans/(?P<pid>pl[0-9a-f]+)/restore", lambda q, b, pid: restore_plan(pid, b)),
+    ("POST", r"/v1/plans/(?P<pid>pl[0-9a-f]+)/delete", lambda q, b, pid: (_plans(plans.remove, pid), {"ok": True})[1]),
     ("GET", r"/v1/books", lambda q, b: books.books()),
     ("GET", r"/v1/books/search", lambda q, b: books.search(((q.get("q") or [""])[0] or "")[:200], None, 12)),
     ("POST", r"/v1/books", lambda q, b: teach_book(b)),

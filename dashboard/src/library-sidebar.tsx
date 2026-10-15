@@ -1,14 +1,26 @@
 "use client";
 
-import { BookOpen, Loader2, Plus, Search, Table2, Upload } from "lucide-react";
+import { BookOpen, FileText, Loader2, Plus, Search, Table2, Upload } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, useTransition } from "react";
-import type { Book, LibraryTableSummary } from "./backend/types";
+import type { Book, LibraryTableSummary, Plan } from "./backend/types";
 import { cx } from "./ui";
 
 /** The library's own sidebar, like monday's list of boards: every table, findable by name. */
-export function LibrarySidebar({ tables, books = [], active, canTeach = false }: { tables: LibraryTableSummary[]; books?: Book[]; active?: string; canTeach?: boolean }) {
+export function LibrarySidebar({
+  tables,
+  books = [],
+  plans = [],
+  active,
+  canTeach = false,
+}: {
+  tables: LibraryTableSummary[];
+  books?: Book[];
+  plans?: Plan[];
+  active?: string;
+  canTeach?: boolean;
+}) {
   const [find, setFind] = useState("");
   const words = find.toLowerCase().split(/\s+/).filter(Boolean);
   const shown = tables.filter((t) => words.every((w) => `${t.name} ${t.description}`.toLowerCase().includes(w)));
@@ -52,6 +64,34 @@ export function LibrarySidebar({ tables, books = [], active, canTeach = false }:
           );
         })}
         {shown.length === 0 && <li className="px-2 py-2 text-sm text-ink-3">{tables.length ? "No table by that name." : "No tables yet."}</li>}
+        {plans.length > 0 && (
+          <li className="mt-5 mb-1 px-2 text-xs font-medium tracking-wide text-ink-3 uppercase" aria-hidden>
+            Plans
+          </li>
+        )}
+        {plans
+          .filter((p) => words.every((w) => p.title.toLowerCase().includes(w)))
+          .map((p) => {
+            const current = p.id === active;
+            return (
+              <li key={p.id}>
+                <Link
+                  href={`/library/plans/${p.id}`}
+                  aria-current={current ? "page" : undefined}
+                  title={p.title}
+                  className={cx(
+                    "flex items-center gap-2.5 rounded-lg px-2 py-2 text-sm transition-colors",
+                    current ? "bg-surface font-medium text-ink shadow-sm" : "text-ink-2 hover:bg-surface-2 hover:text-ink",
+                  )}
+                >
+                  <FileText className={cx("size-4 shrink-0", current ? "text-accent" : "text-ink-3")} aria-hidden />
+                  <span className="min-w-0 flex-1 truncate" dir="auto">
+                    {p.title}
+                  </span>
+                </Link>
+              </li>
+            );
+          })}
         {(books.length > 0 || canTeach) && (
           <li className="mt-5 mb-1 px-2 text-xs font-medium tracking-wide text-ink-3 uppercase" aria-hidden>
             Books

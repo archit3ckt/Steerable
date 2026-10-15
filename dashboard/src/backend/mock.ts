@@ -18,6 +18,7 @@ import type {
 import { AgentError } from "./agent";
 import { libraryOps, sampleLibrary } from "./mock-library";
 import { bookOps, sampleBooks } from "./mock-books";
+import { planOps, samplePlans } from "./mock-plans";
 
 /**
  * In-memory sample company for building the UI: a small plant shop with an online store
@@ -42,6 +43,7 @@ type State = {
   files: Map<string, { file: ChatFile; data: ArrayBuffer }>;
   library: ReturnType<typeof sampleLibrary>;
   books: ReturnType<typeof sampleBooks>;
+  plans: ReturnType<typeof samplePlans>;
 };
 
 function seed(company: Company, now: number): State {
@@ -53,6 +55,7 @@ function seed(company: Company, now: number): State {
     files: new Map(),
     library: sampleLibrary(now),
     books: sampleBooks(now),
+    plans: samplePlans(now),
     decisions: [
       {
         id: "d-refund",
@@ -291,6 +294,7 @@ export function mockBackend(company: Company): CompanyBackend {
   return {
     ...libraryOps(() => state().library),
     ...bookOps(() => (state().books ??= sampleBooks(Date.now()))),
+    ...planOps(() => (state().plans ??= samplePlans(Date.now()))),
     async overview() {
       const s = state();
       const weekAgo = Date.now() - 7 * DAY;

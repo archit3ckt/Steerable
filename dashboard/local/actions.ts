@@ -138,3 +138,23 @@ export async function removeBook(book: string) {
   if (!result.error) redirect("/library");
   return result;
 }
+
+const planId = (x: unknown) => (typeof x === "string" && /^pl[0-9a-f]{4,20}$/.test(x) ? x : "");
+
+export async function savePlan(plan: string, body: string, note: string) {
+  const result = await dashboardAction(backend, (b) => b.savePlan(planId(plan), String(body ?? "").slice(0, 200_000), String(note ?? "").slice(0, 300)));
+  refresh();
+  return result;
+}
+
+export async function restorePlan(plan: string, version: number) {
+  const result = await dashboardAction(backend, (b) => b.restorePlan(planId(plan), Math.trunc(Number(version))));
+  refresh();
+  return result;
+}
+
+export async function removePlan(plan: string) {
+  const result = await dashboardAction(backend, (b) => b.removePlan(planId(plan)));
+  if (!result.error) redirect("/library");
+  return result;
+}
