@@ -42,7 +42,8 @@ PER_MESSAGE_CAP_USD = "0.50"
 # Claude Code applies Edit(...) rules to all file-writing tools, Write included.
 PY = ".venv/bin/python scripts/"
 CHAT_SCRIPTS = ["propose.py *", "change.py *", "run.py *", "ask.py *", "library.py *", "social.py *", "status.py", "status.py *", "decide.py *",
-                "ops_db.py --show", "ops_db.py --seed", "ops_db.py --seed --show", "vault.py ask *", "accounts.py propose *", "accounts.py list", "integrations.py",
+                "ops_db.py --show", "ops_db.py --seed", "ops_db.py --seed --show", "ops_db.py mission *", "ops_db.py goal *",
+                "ops_db.py add-mission *", "vault.py ask *", "accounts.py propose *", "accounts.py list", "integrations.py",
                 "mailbox.py *", "brief.py", "skills.py list", "files.py list", "state.py show *",
                 "books.py list", "books.py search *", "reddit.py *", "plans.py *"]
 OWN_SPACE = ["./memory/**", "./.claude/skills/**", "./drafts/**", "./CLAUDE.md"]
@@ -273,6 +274,13 @@ def converse(text: str, channel: str = "Telegram", show_prompt: bool = True, att
                 log_run("bridge", "library", run=run, changes=changes)
                 record_event(f"Updated the library: {counts_words(changes)}", who="COO", ref=run)
     _log_chat("coo", reply, steps)
+    if show_prompt and text:
+        # Did this turn finish a project on the Goals page? A cheap check (Jev), in the background.
+        import threading
+
+        from ops_db import notice_done
+
+        threading.Thread(target=notice_done, args=(text, reply), daemon=True).start()
     return reply
 
 
