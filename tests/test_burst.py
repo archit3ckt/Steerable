@@ -106,6 +106,32 @@ except subprocess.TimeoutExpired as e:
         self.assertEqual(got["stdout"].split(), ["None", "routine", "None"])
         self.assertEqual(Platform.requests, [])
 
+    def test_nothing_it_leaves_running_keeps_us_waiting(self):
+        # A build once waited 13 hours: Claude finished, but a test it left running in the background
+        # held the output open. Now what a command leaves behind is stopped when it exits or runs out of time.
+        import time
+        pidfile = self.root / "leftover.pid"
+        started = time.monotonic()
+        got = self.run_burst(f'burst.run(["sh", "-c", "echo hi; sleep 300 & echo $! > {pidfile}; echo done"], kind="claude", timeout=60)',
+                             jobs=False)
+        self.assertLess(time.monotonic() - started, 20)
+        self.assertEqual(got["stdout"].split(), ["hi", "done"])
+        pid = int(pidfile.read_text())
+        for _ in range(50):
+            try:
+                os.kill(pid, 0)
+            except ProcessLookupError:
+                break
+            if Path(f"/proc/{pid}/stat").exists() and Path(f"/proc/{pid}/stat").read_text().split()[2] == "Z":
+                break  # gone, waiting to be reaped
+            time.sleep(0.1)
+        else:
+            self.fail("the background process it left is still running")
+        started = time.monotonic()
+        got = self.run_burst('burst.run(["sh", "-c", "sleep 300 & sleep 300"], kind="claude", timeout=1)', jobs=False)
+        self.assertEqual(got, {"timeout": True})
+        self.assertLess(time.monotonic() - started, 20)
+
     def test_runs_in_a_job_with_the_same_folder(self):
         Platform.mode = "run"
         got = self.run_burst(self.PRINT_ENV)

@@ -348,6 +348,7 @@ How to work:
   fake it or hard-code a guess: set status "needs_owner" and say exactly what, in plain words. If
   you can't make it work, set status "failed" and say why.
 - Write summary and needs for a busy owner who isn't technical: no file names, no code words.
+- Run every test in the foreground and wait for it (never in the background): the build ends when you do.
 """
 
 

@@ -19,8 +19,10 @@ Without STEERABLE_JOBS_URL (self-hosted, local) or inside a Job already, it's su
 import json
 import os
 import shutil
+import signal
 import subprocess
 import sys
+import tempfile
 import time
 import urllib.error
 import urllib.request
@@ -76,14 +78,33 @@ def _tidy() -> None:
 
 def _local(cmd: list[str], *, cwd: Path | str, timeout: float, env: dict | None,
            stream: Path | str | None) -> subprocess.CompletedProcess:
-    """subprocess.run, with stdout written to `stream` as it comes when there is one."""
-    if stream is None:
-        return subprocess.run(cmd, cwd=cwd, capture_output=True, text=True, timeout=timeout,
-                              stdin=subprocess.DEVNULL, env=env)
-    with open(stream, "w") as out:
-        proc = subprocess.run(cmd, cwd=cwd, stdout=out, stderr=subprocess.PIPE, text=True, timeout=timeout,
-                              stdin=subprocess.DEVNULL, env=env)
-    return subprocess.CompletedProcess(cmd, proc.returncode, Path(stream).read_text(), proc.stderr)
+    """Run cmd to completion here, with stdout written to `stream` as it comes when there is one.
+    It runs in its own process group with its output going to files, not pipes, so nothing it starts
+    (a test it left running in the background, a browser) can keep us waiting: when it exits or runs
+    out of time, whatever it left behind is stopped too. Raises subprocess.TimeoutExpired, like run()."""
+    with tempfile.TemporaryFile("w+") as err, (open(stream, "w") if stream else tempfile.TemporaryFile("w+")) as out:
+        proc = subprocess.Popen(cmd, cwd=cwd, stdout=out, stderr=err, stdin=subprocess.DEVNULL, text=True, env=env,
+                                start_new_session=True)
+        try:
+            code = proc.wait(timeout=timeout)
+        except subprocess.TimeoutExpired:
+            code = None
+        try:
+            os.killpg(proc.pid, signal.SIGKILL)  # its leftovers (or itself, out of time)
+        except (ProcessLookupError, PermissionError):
+            pass
+        if code is None:
+            proc.wait()
+        err.seek(0)
+        if stream:
+            out.flush()
+            stdout = Path(stream).read_text()
+        else:
+            out.seek(0)
+            stdout = out.read()
+        if code is None:
+            raise subprocess.TimeoutExpired(cmd, timeout, output=stdout, stderr=err.read())
+        return subprocess.CompletedProcess(cmd, code, stdout, err.read())
 
 
 def run(cmd: list[str], *, kind: str, timeout: float, cwd: Path | str = ROOT,
