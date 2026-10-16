@@ -203,6 +203,51 @@
       "url": "https://mcp.razorpay.com/mcp"
     }
   },
+  "qonto": {
+    "name": "Qonto",
+    "description": "Your Qonto business account (Europe): balances, transactions and receipts.",
+    "category": "Payments",
+    "uses": [
+      "Weekly money summaries",
+      "Matching receipts"
+    ],
+    "auth": {
+      "type": "mcp-oauth"
+    },
+    "mcp": {
+      "url": "https://mcp.qonto.com/mcp"
+    }
+  },
+  "cashfree": {
+    "name": "Cashfree",
+    "description": "Payments and payouts on Cashfree (India).",
+    "category": "Payments",
+    "uses": [
+      "Daily payment summaries",
+      "Checking settlements"
+    ],
+    "auth": {
+      "type": "mcp-oauth"
+    },
+    "mcp": {
+      "url": "https://mcp.cashfree.com/mcp"
+    }
+  },
+  "yoco": {
+    "name": "Yoco",
+    "description": "Card payments and sales on Yoco (South Africa).",
+    "category": "Payments",
+    "uses": [
+      "Daily sales summaries",
+      "Finding a payment"
+    ],
+    "auth": {
+      "type": "mcp-oauth"
+    },
+    "mcp": {
+      "url": "https://mcp.yoco.com/mcp"
+    }
+  },
   "holded": {
     "name": "Holded",
     "description": "Invoices, contacts and accounting on Holded.",
@@ -231,6 +276,141 @@
     },
     "mcp": {
       "url": "https://mcp.pennylane.com/mcp"
+    }
+  },
+  "myob": {
+    "name": "MYOB",
+    "description": "Invoices and accounting on MYOB (Australia and New Zealand).",
+    "category": "Accounting",
+    "uses": [
+      "Issuing invoices",
+      "Who still owes you"
+    ],
+    "auth": {
+      "type": "mcp-oauth"
+    },
+    "mcp": {
+      "url": "https://mcp.myob.com/mcp"
+    }
+  },
+  "quickfile": {
+    "name": "QuickFile",
+    "description": "Invoices and accounting on QuickFile (UK).",
+    "category": "Accounting",
+    "uses": [
+      "Issuing invoices",
+      "Who still owes you"
+    ],
+    "auth": {
+      "type": "mcp-oauth"
+    },
+    "mcp": {
+      "url": "https://mcp.quickfile.co.uk/mcp"
+    }
+  },
+  "tripletex": {
+    "name": "Tripletex",
+    "description": "Invoices and accounting on Tripletex (Norway).",
+    "category": "Accounting",
+    "uses": [
+      "Issuing invoices",
+      "Who still owes you"
+    ],
+    "auth": {
+      "type": "mcp-oauth"
+    },
+    "mcp": {
+      "url": "https://mcp.tripletex.no/mcp"
+    }
+  },
+  "dinero": {
+    "name": "Dinero",
+    "description": "Invoices and accounting on Dinero (Denmark).",
+    "category": "Accounting",
+    "uses": [
+      "Issuing invoices",
+      "Who still owes you"
+    ],
+    "auth": {
+      "type": "mcp-oauth"
+    },
+    "mcp": {
+      "url": "https://mcp.dinero.dk/mcp"
+    }
+  },
+  "freee": {
+    "name": "freee",
+    "description": "Invoices and accounting on freee (Japan).",
+    "category": "Accounting",
+    "uses": [
+      "Issuing invoices",
+      "Monthly numbers for your accountant"
+    ],
+    "auth": {
+      "type": "mcp-oauth"
+    },
+    "mcp": {
+      "url": "https://mcp.freee.co.jp/mcp"
+    }
+  },
+  "fakturownia": {
+    "name": "Fakturownia",
+    "description": "Invoices on Fakturownia (Poland).",
+    "category": "Accounting",
+    "uses": [
+      "Issuing invoices",
+      "Who still owes you"
+    ],
+    "auth": {
+      "type": "mcp-oauth"
+    },
+    "mcp": {
+      "url": "https://mcp.fakturownia.pl/mcp"
+    }
+  },
+  "infakt": {
+    "name": "inFakt",
+    "description": "Invoices and accounting on inFakt (Poland).",
+    "category": "Accounting",
+    "uses": [
+      "Issuing invoices",
+      "Who still owes you"
+    ],
+    "auth": {
+      "type": "mcp-oauth"
+    },
+    "mcp": {
+      "url": "https://mcp.infakt.pl/mcp"
+    }
+  },
+  "alegra": {
+    "name": "Alegra",
+    "description": "Invoices and accounting on Alegra (Latin America and Spain).",
+    "category": "Accounting",
+    "uses": [
+      "Issuing invoices",
+      "Who still owes you"
+    ],
+    "auth": {
+      "type": "mcp-oauth"
+    },
+    "mcp": {
+      "url": "https://mcp.alegra.com/mcp"
+    }
+  },
+  "axonaut": {
+    "name": "Axonaut",
+    "description": "Customers, quotes and invoices on Axonaut (France).",
+    "category": "Accounting",
+    "uses": [
+      "Issuing quotes and invoices",
+      "Following up with customers"
+    ],
+    "auth": {
+      "type": "mcp-oauth"
+    },
+    "mcp": {
+      "url": "https://mcp.axonaut.com/mcp"
     }
   },
   "calendly": {
@@ -1275,6 +1455,51 @@
       "url": "https://mcp.jungleworks.com/mcp"
     }
   },
+  "shiprocket": {
+    "name": "Shiprocket",
+    "description": "Orders and shipping on Shiprocket (India).",
+    "category": "Delivery",
+    "uses": [
+      "Orders waiting to ship",
+      "Tracking a parcel"
+    ],
+    "auth": {
+      "type": "mcp-oauth"
+    },
+    "mcp": {
+      "url": "https://mcp.shiprocket.in/mcp"
+    }
+  },
+  "swiggy": {
+    "name": "Swiggy",
+    "description": "Order food and groceries on Swiggy (India).",
+    "category": "Delivery",
+    "uses": [
+      "Ordering lunch for the team",
+      "Restocking supplies"
+    ],
+    "auth": {
+      "type": "mcp-oauth"
+    },
+    "mcp": {
+      "url": "https://mcp.swiggy.com/mcp"
+    }
+  },
+  "rappi": {
+    "name": "Rappi",
+    "description": "Order food and supplies on Rappi (Latin America).",
+    "category": "Delivery",
+    "uses": [
+      "Ordering lunch for the team",
+      "Restocking supplies"
+    ],
+    "auth": {
+      "type": "mcp-oauth"
+    },
+    "mcp": {
+      "url": "https://mcp.rappi.com/mcp"
+    }
+  },
   "hospitable": {
     "name": "Hospitable",
     "description": "Your short-term rentals on Hospitable: Airbnb and other bookings, guests and messages.",
@@ -1318,6 +1543,21 @@
     },
     "mcp": {
       "url": "https://mcp.workable.com/mcp"
+    }
+  },
+  "factorial": {
+    "name": "Factorial",
+    "description": "Your team on Factorial: people, time off and hours.",
+    "category": "People and hiring",
+    "uses": [
+      "Who's off this week",
+      "Onboarding a new hire"
+    ],
+    "auth": {
+      "type": "mcp-oauth"
+    },
+    "mcp": {
+      "url": "https://mcp.factorialhr.com/mcp"
     }
   },
   "consensus": {
