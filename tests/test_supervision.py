@@ -48,7 +48,8 @@ import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 import library
-from common import act, step, tell_owner
+from budget import record
+from common import act, log_run, step, tell_owner
 
 JOBS = [("acme-1", "Data Analyst", "Acme"), ("beta-2", "BI Developer", "Beta"), ("hold-3", "Analyst", "HoldCo")]
 skip = set(Path(__file__).with_name("skip.txt").read_text().split()) if Path(__file__).with_name("skip.txt").exists() else set()
@@ -65,6 +66,8 @@ for key, title, company in JOBS:
     if act(f"Send the application for {title} at {company}", {"job": key, "company": company}, kind="submit"):
         apps.add({"Job": title, "Company": company, "Status": "Applied"}, key=key)
         done += 1
+log_run("apply_jobs", "checked", jobs=len(JOBS))
+record("apply_jobs", 0.01, note="judging jobs")
 tell_owner(f"Applied to {done} jobs")
 print(f"Applied to {done} jobs")
 '''
@@ -81,6 +84,7 @@ builder.git("worktree", "add", "-q", str(wt), "-b", "build/apply_jobs", "HEAD")
 for shared in (".env", ".venv"):
     os.symlink(builder.ROOT / shared, wt / shared)
 (wt / "workflows/apply_jobs.py").write_text(open(".cache/routine.py").read())
+import shutil; shutil.rmtree(wt / "logs", ignore_errors=True)  # a company repo may not track logs/ at all
 (wt / "workflows/apply_jobs.flow.json").write_text(json.dumps({"steps": [
     {"kind": "trigger", "label": "Every 3 hours"}, {"kind": "send", "label": "Apply to new jobs"}]}))
 builder.git("-C", str(wt), "add", "workflows/")
@@ -92,7 +96,8 @@ with builder._state() as s:
 p = builder._practice("b1234abcd", builder.load()["b1234abcd"], wt)
 builder._cleanup("b1234abcd", "apply_jobs", keep_branch=True)
 builder.update("b1234abcd", status="ready", trace=p["trace"], review=p["review"], summary="Applies to jobs", finished="2026-10-13T08:05:00+00:00")
-print(json.dumps({"practice": p, "trace": runtrace.load(p["trace"]), "rows": apps.count()}))
+spent = [json.loads(l) for l in open("logs/spend.jsonl")] if os.path.exists("logs/spend.jsonl") else []
+print(json.dumps({"practice": p, "trace": runtrace.load(p["trace"]), "rows": apps.count(), "spent": spent}))
 """
 
 AUTO_FIX = r"""
@@ -215,6 +220,7 @@ class SupervisionTest(unittest.TestCase):
         self.assertIn("step", kinds)
         self.assertIn({"kind": "message", "text": "Applied to 0 jobs"}, [{k: e[k] for k in ("kind", "text")} for e in events if e["kind"] == "message"])
         self.assertEqual(out["rows"], 1)  # the practice run changed nothing
+        self.assertEqual([[e["source"], e["cost_usd"]] for e in out["spent"] if e["source"] == "apply_jobs"], [["apply_jobs", 0.01]])
         self.assertEqual(out["practice"]["review"]["concerns"], ["It doesn't check that a job is still open before applying."])
         review_prompt = json.loads(self.log.read_text().splitlines()[-1])
         self.assertIn("Send the application for BI Developer at Beta", review_prompt)  # the reviewer saw the trace

@@ -121,6 +121,7 @@ def record(source: str, cost_usd: float, model: str = "",
     entry = {"ts": now_iso(), "source": source, "model": model,
              "input_tokens": input_tokens, "output_tokens": output_tokens,
              "cost_usd": round(cost_usd, 6), "note": note}
+    SPEND_LOG.parent.mkdir(exist_ok=True)
     with SPEND_LOG.open("a") as f:
         f.write(json.dumps(entry) + "\n")
     return cost_usd

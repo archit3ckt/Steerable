@@ -494,8 +494,11 @@ def practice_run(wt: Path, name: str, task: str, tid: str, **about) -> dict:
     runtrace.start(tid, workflow=name, kind="practice", task=task, **about)
     # What the routine reads: the library and its working state (both read-only in a practice run), and
     # where its trace goes. Not ops.db: what a practice run notes there isn't the company's history.
+    # And the spending ledger: what a practice run spends (judging posts with AI, say) is real and counts.
+    (ROOT / "logs").mkdir(exist_ok=True)
+    (ROOT / "logs/spend.jsonl").touch()
     for rel, target in {"library.db": ROOT / "library.db", ".cache/state.db": CACHE / "state.db",
-                        ".cache/traces": runtrace.TRACES}.items():
+                        ".cache/traces": runtrace.TRACES, "logs/spend.jsonl": ROOT / "logs/spend.jsonl"}.items():
         if target.exists() and not (wt / rel).exists():
             (wt / rel).parent.mkdir(parents=True, exist_ok=True)
             os.symlink(target, wt / rel)

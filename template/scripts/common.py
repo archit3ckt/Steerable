@@ -79,6 +79,7 @@ def log_run(script: str, status: str, cost_usd: float = 0.0, **details) -> None:
     """Append one line per run to logs/runs.jsonl. Every script calls this."""
     entry = {"ts": now_iso(), "script": script, "status": status,
              "cost_usd": round(cost_usd, 6), **details}
+    RUN_LOG.parent.mkdir(exist_ok=True)  # a build's worktree has no logs/ (it's git-ignored)
     with RUN_LOG.open("a") as f:
         f.write(json.dumps(entry) + "\n")
 
