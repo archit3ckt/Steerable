@@ -1745,7 +1745,8 @@ def tools_overview() -> dict:
         "catalog": [{"id": k, "name": v["name"], "description": v["description"], "category": v["category"],
                      "uses": v.get("uses", []),
                      "auth": {x: v["auth"][x] for x in ("type", "keyLabel", "keyHint", "optional") if x in v["auth"]},
-                     **({"tested": v["tested"]} if v.get("tested") else {})}
+                     **({"tested": v["tested"]} if v.get("tested") else {}),
+                     **({"popular": v["popular"]} if v.get("popular") else {})}
                     for k, v in tools.catalog().items()],
         "connected": tools.connected(),
         "alwaysAllowed": [{"tool": t, "service": approvals.service_name(approvals.split(t)[0]),

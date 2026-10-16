@@ -4,6 +4,7 @@
     "name": "Stripe",
     "description": "Payments: see payments, invoices, customers and payouts.",
     "category": "Payments",
+    "popular": 4,
     "uses": [
       "Chasing unpaid invoices",
       "Spotting failed payments",
@@ -40,6 +41,7 @@
     "name": "Square",
     "description": "Your Square shop: sales, items, customers and orders.",
     "category": "Payments",
+    "popular": 3,
     "uses": [
       "Daily sales summaries",
       "Spotting best sellers"
@@ -145,6 +147,7 @@
     "name": "Calendly",
     "description": "Bookings: see and manage scheduled meetings.",
     "category": "Email and calendar",
+    "popular": 2,
     "uses": [
       "Preparing for calls",
       "Following up after meetings"
@@ -475,6 +478,7 @@
     "name": "Notion",
     "description": "Pages and databases: read, write and organize your notes and docs.",
     "category": "Docs and projects",
+    "popular": 1,
     "uses": [
       "Keeping docs up to date",
       "Weekly notes",
@@ -491,6 +495,7 @@
     "name": "Airtable",
     "description": "Bases and records: read and update the tables you run the business on.",
     "category": "Docs and projects",
+    "popular": 6,
     "uses": [
       "Updating your trackers",
       "Inventory and orders",
@@ -717,6 +722,7 @@
     "name": "Dropbox",
     "description": "Files: find, organize and share them.",
     "category": "Files",
+    "popular": 8,
     "uses": [
       "Filing documents",
       "Sharing links with customers"
@@ -822,6 +828,7 @@
     "name": "Canva",
     "description": "Designs: create and resize them in your brand.",
     "category": "Marketing",
+    "popular": 5,
     "uses": [
       "Social posts",
       "Resizing designs"
@@ -1497,6 +1504,7 @@
     "name": "Zapier",
     "description": "Thousands of other apps, through the Zapier actions you enable.",
     "category": "Everything else",
+    "popular": 7,
     "uses": [
       "Apps not listed here",
       "Automations you already use"

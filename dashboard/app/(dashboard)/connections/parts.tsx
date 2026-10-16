@@ -35,7 +35,10 @@ export function Catalog({ items }: { items: CatalogItem[] }) {
       return words.every((w) => text.includes(w));
     });
   }, [items, query]);
-  const categories = [...new Set(shown.map((i) => i.category))];
+  // Without a search, the most-used services come first, once (not again under their category).
+  const popular = query.trim() ? [] : shown.filter((i) => i.popular).sort((a, b) => (a.popular ?? 0) - (b.popular ?? 0));
+  const rest = shown.filter((i) => !popular.includes(i));
+  const categories = [...new Set(rest.map((i) => i.category))];
 
   return (
     <div className="space-y-6">
@@ -49,11 +52,21 @@ export function Catalog({ items }: { items: CatalogItem[] }) {
           className={cx(inputClass, "pl-11")}
         />
       </label>
+      {popular.length > 0 && (
+        <div>
+          <h3 className="mb-2 text-sm font-medium text-ink-2">Popular</h3>
+          <div className="grid gap-3 sm:grid-cols-2">
+            {popular.map((i) => (
+              <ServiceCard key={i.id} item={i} />
+            ))}
+          </div>
+        </div>
+      )}
       {categories.map((category) => (
         <div key={category}>
           <h3 className="mb-2 text-sm font-medium text-ink-2">{category}</h3>
           <div className="grid gap-3 sm:grid-cols-2">
-            {shown
+            {rest
               .filter((i) => i.category === category)
               .map((i) => (
                 <ServiceCard key={i.id} item={i} />

@@ -20,6 +20,8 @@ export type CatalogItem = {
   auth: { type: "mcp-oauth" | "apikey"; keyLabel?: string; keyHint?: string; optional?: boolean };
   /** When we connected it with a real account and saw it work (YYYY-MM-DD); without it, it's shown as Beta. */
   tested?: string;
+  /** Shown first, in this order, under Popular (the services most owners use). */
+  popular?: number;
 };
 
 export type ConnectedTool = { id: string; name: string; url: string; custom: boolean; connectedAt: string; tools: number; readOnly: string[] };
