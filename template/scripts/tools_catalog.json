@@ -36,6 +36,51 @@
       "url": "https://mcp.paypal.com/mcp"
     }
   },
+  "square": {
+    "name": "Square",
+    "description": "Your Square shop: sales, items, customers and orders.",
+    "category": "Payments",
+    "uses": [
+      "Daily sales summaries",
+      "Spotting best sellers"
+    ],
+    "auth": {
+      "type": "mcp-oauth"
+    },
+    "mcp": {
+      "url": "https://mcp.squareup.com/mcp"
+    }
+  },
+  "mercury": {
+    "name": "Mercury",
+    "description": "Your Mercury business bank: balances and transactions.",
+    "category": "Payments",
+    "uses": [
+      "Weekly money summaries",
+      "Finding a payment"
+    ],
+    "auth": {
+      "type": "mcp-oauth"
+    },
+    "mcp": {
+      "url": "https://mcp.mercury.com/mcp"
+    }
+  },
+  "ramp": {
+    "name": "Ramp",
+    "description": "Company cards and spending on Ramp.",
+    "category": "Payments",
+    "uses": [
+      "Spending summaries",
+      "Chasing missing receipts"
+    ],
+    "auth": {
+      "type": "mcp-oauth"
+    },
+    "mcp": {
+      "url": "https://mcp.ramp.com/mcp"
+    }
+  },
   "calendly": {
     "name": "Calendly",
     "description": "Bookings: see and manage scheduled meetings.",
@@ -49,6 +94,21 @@
     },
     "mcp": {
       "url": "https://mcp.calendly.com/"
+    }
+  },
+  "calcom": {
+    "name": "Cal.com",
+    "description": "Bookings and availability on Cal.com.",
+    "category": "Email and calendar",
+    "uses": [
+      "Preparing for calls",
+      "Following up after meetings"
+    ],
+    "auth": {
+      "type": "mcp-oauth"
+    },
+    "mcp": {
+      "url": "https://mcp.cal.com/mcp"
     }
   },
   "intercom": {
@@ -79,6 +139,66 @@
     },
     "mcp": {
       "url": "https://mcp.close.com/mcp"
+    }
+  },
+  "attio": {
+    "name": "Attio",
+    "description": "Your CRM on Attio: people, companies and deals.",
+    "category": "Customers and sales",
+    "uses": [
+      "Keeping contacts up to date",
+      "Following up on deals"
+    ],
+    "auth": {
+      "type": "mcp-oauth"
+    },
+    "mcp": {
+      "url": "https://mcp.attio.com/mcp"
+    }
+  },
+  "apollo": {
+    "name": "Apollo",
+    "description": "Find people and companies, and fill in details about your leads.",
+    "category": "Customers and sales",
+    "uses": [
+      "Finding new leads",
+      "Filling in contact details"
+    ],
+    "auth": {
+      "type": "mcp-oauth"
+    },
+    "mcp": {
+      "url": "https://mcp.apollo.io/mcp"
+    }
+  },
+  "helpscout": {
+    "name": "Help Scout",
+    "description": "Customer emails and help articles on Help Scout.",
+    "category": "Customers and sales",
+    "uses": [
+      "Answering common questions",
+      "Spotting trends in requests"
+    ],
+    "auth": {
+      "type": "mcp-oauth"
+    },
+    "mcp": {
+      "url": "https://mcp.helpscout.net/mcp"
+    }
+  },
+  "jotform": {
+    "name": "Jotform",
+    "description": "Your forms and what people send through them.",
+    "category": "Customers and sales",
+    "uses": [
+      "New enquiries from your forms",
+      "Survey results"
+    ],
+    "auth": {
+      "type": "mcp-oauth"
+    },
+    "mcp": {
+      "url": "https://mcp.jotform.com/"
     }
   },
   "notion": {
@@ -188,6 +308,81 @@
       "url": "https://gitlab.com/api/v4/mcp"
     }
   },
+  "basecamp": {
+    "name": "Basecamp",
+    "description": "Projects, to-dos and messages on Basecamp.",
+    "category": "Docs and projects",
+    "uses": [
+      "Keeping projects moving",
+      "Weekly updates"
+    ],
+    "auth": {
+      "type": "mcp-oauth"
+    },
+    "mcp": {
+      "url": "https://mcp.basecamp.com/mcp"
+    }
+  },
+  "todoist": {
+    "name": "Todoist",
+    "description": "Your tasks and projects on Todoist.",
+    "category": "Docs and projects",
+    "uses": [
+      "Adding follow-ups as tasks",
+      "Daily to-do lists"
+    ],
+    "auth": {
+      "type": "mcp-oauth"
+    },
+    "mcp": {
+      "url": "https://ai.todoist.net/mcp"
+    }
+  },
+  "coda": {
+    "name": "Coda",
+    "description": "Docs and tables on Coda.",
+    "category": "Docs and projects",
+    "uses": [
+      "Keeping docs up to date",
+      "Finding what you wrote down"
+    ],
+    "auth": {
+      "type": "mcp-oauth"
+    },
+    "mcp": {
+      "url": "https://coda.io/apis/mcp"
+    }
+  },
+  "miro": {
+    "name": "Miro",
+    "description": "Boards and diagrams on Miro.",
+    "category": "Docs and projects",
+    "uses": [
+      "Turning notes into a board",
+      "Reading a planning board"
+    ],
+    "auth": {
+      "type": "mcp-oauth"
+    },
+    "mcp": {
+      "url": "https://mcp.miro.com/"
+    }
+  },
+  "lucid": {
+    "name": "Lucid",
+    "description": "Diagrams and whiteboards on Lucid.",
+    "category": "Docs and projects",
+    "uses": [
+      "Mapping a process",
+      "Reading a diagram"
+    ],
+    "auth": {
+      "type": "mcp-oauth"
+    },
+    "mcp": {
+      "url": "https://mcp.lucid.app/mcp"
+    }
+  },
   "dropbox": {
     "name": "Dropbox",
     "description": "Files: find, organize and share them.",
@@ -201,6 +396,66 @@
     },
     "mcp": {
       "url": "https://mcp.dropbox.com/claude_app_mcp"
+    }
+  },
+  "egnyte": {
+    "name": "Egnyte",
+    "description": "Files and folders on Egnyte.",
+    "category": "Files",
+    "uses": [
+      "Finding a file",
+      "Filing documents"
+    ],
+    "auth": {
+      "type": "mcp-oauth"
+    },
+    "mcp": {
+      "url": "https://mcp-server.egnyte.com/mcp"
+    }
+  },
+  "fireflies": {
+    "name": "Fireflies",
+    "description": "Meeting recordings, transcripts and notes from Fireflies.",
+    "category": "Meetings",
+    "uses": [
+      "Follow-ups after calls",
+      "Finding what was agreed"
+    ],
+    "auth": {
+      "type": "mcp-oauth"
+    },
+    "mcp": {
+      "url": "https://api.fireflies.ai/mcp"
+    }
+  },
+  "otter": {
+    "name": "Otter",
+    "description": "Meeting transcripts and summaries from Otter.",
+    "category": "Meetings",
+    "uses": [
+      "Follow-ups after calls",
+      "Finding what was agreed"
+    ],
+    "auth": {
+      "type": "mcp-oauth"
+    },
+    "mcp": {
+      "url": "https://mcp.otter.ai/mcp"
+    }
+  },
+  "granola": {
+    "name": "Granola",
+    "description": "Your meeting notes from Granola.",
+    "category": "Meetings",
+    "uses": [
+      "Follow-ups after calls",
+      "Weekly summaries of your meetings"
+    ],
+    "auth": {
+      "type": "mcp-oauth"
+    },
+    "mcp": {
+      "url": "https://mcp.granola.ai/mcp"
     }
   },
   "klaviyo": {
@@ -233,6 +488,96 @@
       "url": "https://mcp.canva.com/mcp"
     }
   },
+  "ahrefs": {
+    "name": "Ahrefs",
+    "description": "Search and backlink data from Ahrefs.",
+    "category": "Marketing",
+    "uses": [
+      "Keyword ideas",
+      "Checking how you rank"
+    ],
+    "auth": {
+      "type": "mcp-oauth"
+    },
+    "mcp": {
+      "url": "https://api.ahrefs.com/mcp/mcp"
+    }
+  },
+  "similarweb": {
+    "name": "Similarweb",
+    "description": "Website traffic and market data from Similarweb.",
+    "category": "Marketing",
+    "uses": [
+      "Comparing with competitors",
+      "Market research"
+    ],
+    "auth": {
+      "type": "mcp-oauth"
+    },
+    "mcp": {
+      "url": "https://mcp.similarweb.com"
+    }
+  },
+  "figma": {
+    "name": "Figma",
+    "description": "Designs and files on Figma.",
+    "category": "Design and content",
+    "uses": [
+      "Reading a design",
+      "Design feedback"
+    ],
+    "auth": {
+      "type": "mcp-oauth"
+    },
+    "mcp": {
+      "url": "https://mcp.figma.com/mcp"
+    }
+  },
+  "gamma": {
+    "name": "Gamma",
+    "description": "Presentations, documents and web pages made with Gamma.",
+    "category": "Design and content",
+    "uses": [
+      "Making a presentation",
+      "Quick one-pagers"
+    ],
+    "auth": {
+      "type": "mcp-oauth"
+    },
+    "mcp": {
+      "url": "https://mcp.gamma.app/mcp"
+    }
+  },
+  "invideo": {
+    "name": "InVideo",
+    "description": "Videos made with InVideo AI.",
+    "category": "Design and content",
+    "uses": [
+      "Short promo videos",
+      "Social clips"
+    ],
+    "auth": {
+      "type": "mcp-oauth"
+    },
+    "mcp": {
+      "url": "https://mcp.invideo.io/mcp"
+    }
+  },
+  "cloudinary": {
+    "name": "Cloudinary",
+    "description": "Your images and videos on Cloudinary.",
+    "category": "Design and content",
+    "uses": [
+      "Finding and resizing images",
+      "Organizing media"
+    ],
+    "auth": {
+      "type": "mcp-oauth"
+    },
+    "mcp": {
+      "url": "https://asset-management.mcp.cloudinary.com/mcp"
+    }
+  },
   "wix": {
     "name": "Wix",
     "description": "Your Wix site and store: pages, products and orders.",
@@ -246,6 +591,126 @@
     },
     "mcp": {
       "url": "https://mcp.wix.com/mcp"
+    }
+  },
+  "wordpress": {
+    "name": "WordPress.com",
+    "description": "Your WordPress.com sites: posts, pages and comments.",
+    "category": "Website and store",
+    "uses": [
+      "Publishing posts",
+      "Answering comments"
+    ],
+    "auth": {
+      "type": "mcp-oauth"
+    },
+    "mcp": {
+      "url": "https://public-api.wordpress.com/wpcom/v2/mcp/v1"
+    }
+  },
+  "webflow": {
+    "name": "Webflow",
+    "description": "Your Webflow sites and their content.",
+    "category": "Website and store",
+    "uses": [
+      "Updating site content",
+      "Publishing blog posts"
+    ],
+    "auth": {
+      "type": "mcp-oauth"
+    },
+    "mcp": {
+      "url": "https://mcp.webflow.com/mcp"
+    }
+  },
+  "vercel": {
+    "name": "Vercel",
+    "description": "Your Vercel projects and deployments.",
+    "category": "Software and data",
+    "uses": [
+      "Checking a deploy",
+      "Reading build logs"
+    ],
+    "auth": {
+      "type": "mcp-oauth"
+    },
+    "mcp": {
+      "url": "https://mcp.vercel.com"
+    }
+  },
+  "netlify": {
+    "name": "Netlify",
+    "description": "Your Netlify sites and deploys.",
+    "category": "Software and data",
+    "uses": [
+      "Checking a deploy",
+      "Site settings"
+    ],
+    "auth": {
+      "type": "mcp-oauth"
+    },
+    "mcp": {
+      "url": "https://netlify-mcp.netlify.app/mcp"
+    }
+  },
+  "sentry": {
+    "name": "Sentry",
+    "description": "Errors and performance from Sentry.",
+    "category": "Software and data",
+    "uses": [
+      "Spotting new errors",
+      "Weekly error summaries"
+    ],
+    "auth": {
+      "type": "mcp-oauth"
+    },
+    "mcp": {
+      "url": "https://mcp.sentry.dev/mcp"
+    }
+  },
+  "supabase": {
+    "name": "Supabase",
+    "description": "Your Supabase projects and databases.",
+    "category": "Software and data",
+    "uses": [
+      "Checking a database",
+      "Project settings"
+    ],
+    "auth": {
+      "type": "mcp-oauth"
+    },
+    "mcp": {
+      "url": "https://mcp.supabase.com/mcp"
+    }
+  },
+  "huggingface": {
+    "name": "Hugging Face",
+    "description": "Models, datasets and Spaces on Hugging Face.",
+    "category": "Software and data",
+    "uses": [
+      "Finding a model",
+      "Checking a Space"
+    ],
+    "auth": {
+      "type": "mcp-oauth"
+    },
+    "mcp": {
+      "url": "https://huggingface.co/mcp"
+    }
+  },
+  "plaid": {
+    "name": "Plaid",
+    "description": "Plaid's developer dashboard: your Plaid apps and their usage.",
+    "category": "Software and data",
+    "uses": [
+      "Checking your Plaid setup",
+      "Usage and errors"
+    ],
+    "auth": {
+      "type": "mcp-oauth"
+    },
+    "mcp": {
+      "url": "https://api.dashboard.plaid.com/mcp/"
     }
   },
   "zapier": {
