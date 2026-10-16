@@ -143,6 +143,96 @@
       "url": "https://mcp.expensify.com/mcp"
     }
   },
+  "mollie": {
+    "name": "Mollie",
+    "description": "Payments, refunds and customers on Mollie.",
+    "category": "Payments",
+    "uses": [
+      "Daily payment summaries",
+      "Finding a payment"
+    ],
+    "auth": {
+      "type": "mcp-oauth"
+    },
+    "mcp": {
+      "url": "https://mcp.mollie.com/mcp"
+    }
+  },
+  "checkout": {
+    "name": "Checkout.com",
+    "description": "Payments and disputes on Checkout.com.",
+    "category": "Payments",
+    "uses": [
+      "Payment summaries",
+      "Handling disputes"
+    ],
+    "auth": {
+      "type": "mcp-oauth"
+    },
+    "mcp": {
+      "url": "https://mcp.checkout.com/mcp"
+    }
+  },
+  "mercadopago": {
+    "name": "Mercado Pago",
+    "description": "Payments and sales on Mercado Pago.",
+    "category": "Payments",
+    "uses": [
+      "Daily sales summaries",
+      "Finding a payment"
+    ],
+    "auth": {
+      "type": "mcp-oauth"
+    },
+    "mcp": {
+      "url": "https://mcp.mercadopago.com/mcp"
+    }
+  },
+  "razorpay": {
+    "name": "Razorpay",
+    "description": "Payments, orders and settlements on Razorpay.",
+    "category": "Payments",
+    "uses": [
+      "Daily payment summaries",
+      "Checking settlements"
+    ],
+    "auth": {
+      "type": "mcp-oauth"
+    },
+    "mcp": {
+      "url": "https://mcp.razorpay.com/mcp"
+    }
+  },
+  "holded": {
+    "name": "Holded",
+    "description": "Invoices, contacts and accounting on Holded.",
+    "category": "Accounting",
+    "uses": [
+      "Issuing invoices",
+      "Who still owes you"
+    ],
+    "auth": {
+      "type": "mcp-oauth"
+    },
+    "mcp": {
+      "url": "https://mcp.holded.com/mcp"
+    }
+  },
+  "pennylane": {
+    "name": "Pennylane",
+    "description": "Invoices and accounting on Pennylane.",
+    "category": "Accounting",
+    "uses": [
+      "Issuing invoices",
+      "Monthly numbers for your accountant"
+    ],
+    "auth": {
+      "type": "mcp-oauth"
+    },
+    "mcp": {
+      "url": "https://mcp.pennylane.com/mcp"
+    }
+  },
   "calendly": {
     "name": "Calendly",
     "description": "Bookings: see and manage scheduled meetings.",
@@ -1153,6 +1243,51 @@
     },
     "mcp": {
       "url": "https://mcp.shipstation.com/mcp"
+    }
+  },
+  "onfleet": {
+    "name": "Onfleet",
+    "description": "Local deliveries, drivers and routes on Onfleet.",
+    "category": "Delivery",
+    "uses": [
+      "Creating delivery tasks",
+      "Where a delivery is"
+    ],
+    "auth": {
+      "type": "mcp-oauth"
+    },
+    "mcp": {
+      "url": "https://mcp.onfleet.com/mcp"
+    }
+  },
+  "tookan": {
+    "name": "Tookan",
+    "description": "Deliveries and drivers on Tookan.",
+    "category": "Delivery",
+    "uses": [
+      "Creating delivery tasks",
+      "Where a delivery is"
+    ],
+    "auth": {
+      "type": "mcp-oauth"
+    },
+    "mcp": {
+      "url": "https://mcp.jungleworks.com/mcp"
+    }
+  },
+  "hospitable": {
+    "name": "Hospitable",
+    "description": "Your short-term rentals on Hospitable: Airbnb and other bookings, guests and messages.",
+    "category": "Bookings and stays",
+    "uses": [
+      "Messages to guests",
+      "Upcoming check-ins"
+    ],
+    "auth": {
+      "type": "mcp-oauth"
+    },
+    "mcp": {
+      "url": "https://mcp.hospitable.com/mcp"
     }
   },
   "greenhouse": {
