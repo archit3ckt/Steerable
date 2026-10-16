@@ -21,18 +21,18 @@ export function sampleDashboards(now: number): Stored[] {
   return [
     {
       id: "db5a1e5c0d",
-      name: "Sales at a glance",
-      description: "Leads and cafes, for the Monday check-in",
+      name: "Cafes at a glance",
+      description: "Cafes and new leads, for the Monday check-in",
       createdAt: at,
       updatedAt: at,
       updatedBy: "coo",
       widgets: [
         { id: "w00000001", type: "number", title: "Open leads", table: "t_leads", where: { Status: "New" }, measure: "count" },
-        { id: "w00000002", type: "number", title: "Won so far", table: "t_leads", where: { Status: "Won" }, measure: "sum", column: "Value" },
+        { id: "w00000002", type: "number", title: "Plants we look after", table: "t_cafes", where: { Status: "Active" }, measure: "sum", column: "Plants" },
         { id: "w00000003", type: "progress", title: "Active cafes, goal 12", table: "t_cafes", where: { Status: "Active" }, measure: "count", goal: 12 },
         { id: "w00000004", type: "bars", title: "Leads by status", table: "t_leads", by: "Status", measure: "count", limit: 8 },
         { id: "w00000005", type: "trend", title: "Leads added per week", table: "t_leads", date: "added", every: "week", last: 8, measure: "count", wide: true },
-        { id: "w00000006", type: "list", title: "Biggest cafes", table: "t_cafes", sort: "Monthly order", dir: "desc", limit: 5, show: ["Name", "Status", "Monthly order"], wide: true },
+        { id: "w00000006", type: "list", title: "Cafes with the most plants", table: "t_cafes", sort: "Plants", dir: "desc", limit: 5, show: ["Name", "Status", "Plants"], wide: true },
       ],
     },
   ];

@@ -16,8 +16,8 @@ Independent cafes within 5 km that care about how they look.
 - Instagram, twice a week: before-and-after photos of cafes we've styled
 - Visit 5 cafes a week with a sample plant
 
-## Budget
-$300 a month, mostly sample plants.
+## Time
+About 3 hours a week, mostly visits.
 `;
 
 const MARKETING_2 = MARKETING_1.replace("Goal: 10 new cafe customers", "Goal: 12 new cafe customers").replace(
@@ -25,7 +25,7 @@ const MARKETING_2 = MARKETING_1.replace("Goal: 10 new cafe customers", "Goal: 12
   "- Visit 5 cafes a week with a sample plant\n- A tasting morning each month, with Riverside Roasters\n",
 );
 
-const MARKETING_3 = MARKETING_2.replace("$300 a month, mostly sample plants.", "$350 a month: sample plants, and coffee for the tasting mornings.");
+const MARKETING_3 = MARKETING_2.replace("About 3 hours a week, mostly visits.", "About 4 hours a week: visits, and the tasting mornings.");
 
 const BUSINESS_1 = `# Business plan
 
@@ -35,8 +35,8 @@ Bloom & Root sells and looks after plants for cafes and small offices.
 - Plants, chosen for the space and the light
 - Care visits every two weeks
 
-## Money
-Monthly care plans are 60% of revenue. The aim is 70% by next summer.
+## Growth
+Most of our work is looking after plants for cafes and offices every two weeks. The aim is to look after 60 places by next summer.
 `;
 
 export function samplePlans(now: number): SamplePlan[] {

@@ -54,13 +54,13 @@ export function sampleLibrary(now: number): Table[] {
       name: "Cafes",
       description: "Cafes that buy from you wholesale",
       updated: at(2),
-      columns: [col("Name", "text"), col("Contact", "person"), col("Website", "link"), col("Status", "status", { labels: ["Active", "Quiet", "Lost"] }), col("Monthly order", "number", { unit: "$" })],
+      columns: [col("Name", "text"), col("Contact", "person"), col("Website", "link"), col("Status", "status", { labels: ["Active", "Quiet", "Taking a break"] }), col("Plants", "number")],
       views: [allRows()],
       comments: {},
       rows: [
-        row("r_luna", 40, { Name: "Café Luna", Contact: "Dana", Website: "https://cafeluna.example", Status: "Active", "Monthly order": 640 }),
-        row("r_bean", 35, { Name: "The Bean Room", Contact: "Omar", Website: null, Status: "Quiet", "Monthly order": 210 }),
-        row("r_leaf", 20, { Name: "Green Leaf", Contact: "Priya", Website: "https://greenleaf.example", Status: "Active", "Monthly order": 480 }, "coo"),
+        row("r_luna", 40, { Name: "Café Luna", Contact: "Dana", Website: "https://cafeluna.example", Status: "Active", Plants: 24 }),
+        row("r_bean", 35, { Name: "The Bean Room", Contact: "Omar", Website: null, Status: "Quiet", Plants: 9 }),
+        row("r_leaf", 20, { Name: "Green Leaf", Contact: "Priya", Website: "https://greenleaf.example", Status: "Active", Plants: 18 }, "coo"),
       ],
     },
     {
@@ -70,8 +70,8 @@ export function sampleLibrary(now: number): Table[] {
       updated: at(1),
       columns: [
         col("Name", "text"),
-        col("Status", "status", { labels: ["New", "Contacted", "Won", "Lost"] }),
-        col("Value", "number", { unit: "$" }),
+        col("Status", "status", { labels: ["New", "Contacted", "Won", "Later"] }),
+        col("Plants", "number"),
         col("Next step", "date"),
         col("Asked for a sample", "checkbox"),
         col("Notes", "longtext"),
@@ -85,10 +85,10 @@ export function sampleLibrary(now: number): Table[] {
       ],
       comments: {},
       rows: [
-        row("r_a", 6, { Name: "Northside Bakery", Status: "New", Value: 800, "Next step": at(-2).slice(0, 10), "Asked for a sample": false, Notes: null, Cafe: null }),
-        row("r_b", 5, { Name: "Harbor Dental", Status: "Contacted", Value: 1200, "Next step": at(-1).slice(0, 10), "Asked for a sample": true, Notes: "Wants low-light plants for the waiting room.", Cafe: null }),
-        row("r_c", 3, { Name: "Luna's second shop", Status: "Won", Value: 950, "Next step": null, "Asked for a sample": true, Notes: null, Cafe: "r_luna" }, "coo"),
-        row("r_d", 1, { Name: "Riverside Gym", Status: "Lost", Value: 400, "Next step": null, "Asked for a sample": false, Notes: "Went with a cheaper supplier.", Cafe: null }),
+        row("r_a", 6, { Name: "Northside Bakery", Status: "New", Plants: 30, "Next step": at(-2).slice(0, 10), "Asked for a sample": false, Notes: null, Cafe: null }),
+        row("r_b", 5, { Name: "Harbor Dental", Status: "Contacted", Plants: 45, "Next step": at(-1).slice(0, 10), "Asked for a sample": true, Notes: "Wants low-light plants for the waiting room.", Cafe: null }),
+        row("r_c", 3, { Name: "Luna's second shop", Status: "Won", Plants: 36, "Next step": null, "Asked for a sample": true, Notes: null, Cafe: "r_luna" }, "coo"),
+        row("r_d", 1, { Name: "Riverside Gym", Status: "Later", Plants: 15, "Next step": null, "Asked for a sample": false, Notes: "Moving to a bigger space in spring. Ask again then.", Cafe: null }),
       ],
     },
   ];
