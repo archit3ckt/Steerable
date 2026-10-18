@@ -1,7 +1,7 @@
 import "server-only";
 import { cookies } from "next/headers";
 import { COOKIE, validSession } from "./auth";
-import { agentToken } from "./host";
+import { agentToken, currentSpace } from "./host";
 
 /**
  * Website logins (the engine's scripts/sites.py): the live-login screen's routes pass the
@@ -9,14 +9,13 @@ import { agentToken } from "./host";
  * signed-in owner.
  */
 
-const AGENT = () => process.env.AGENT_API_URL || "http://127.0.0.1:8787";
-
 /** Forward one request to the engine's /v1/sites API, as the response the browser gets. */
 export async function forward(method: "GET" | "POST", path: string, body?: unknown): Promise<Response> {
   if (!validSession((await cookies()).get(COOKIE)?.value, Date.now())) return Response.json({ error: "Sign in first." }, { status: 401 });
-  const res = await fetch(new URL(`/v1/sites${path}`, AGENT()), {
+  const space = await currentSpace();
+  const res = await fetch(new URL(`/v1/sites${path}`, space.url), {
     method,
-    headers: { Authorization: `Bearer ${agentToken() ?? ""}`, "Content-Type": "application/json" },
+    headers: { Authorization: `Bearer ${agentToken(space) ?? ""}`, "Content-Type": "application/json" },
     body: body === undefined ? undefined : JSON.stringify(body),
     cache: "no-store",
     signal: AbortSignal.timeout(90_000),

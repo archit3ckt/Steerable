@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import { connection } from "next/server";
 import { COOKIE, validSession } from "./auth";
 import type { ExtensionStatus } from "../src/extension-card";
-import { agentToken, company } from "./host";
+import { agentToken, currentSpace } from "./host";
 
 /**
  * The services the owner connects themselves (the engine's scripts/tools.py), through the agent
@@ -45,17 +45,18 @@ export async function signedIn(): Promise<void> {
 
 export async function agent<T>(method: "GET" | "POST", path: string, body?: unknown): Promise<T> {
   await signedIn();
+  const space = await currentSpace();
   let res: Response;
   try {
-    res = await fetch(new URL(path, process.env.AGENT_API_URL || "http://127.0.0.1:8787"), {
+    res = await fetch(new URL(path, space.url), {
       method,
-      headers: { Authorization: `Bearer ${agentToken() ?? ""}`, "Content-Type": "application/json" },
+      headers: { Authorization: `Bearer ${agentToken(space) ?? ""}`, "Content-Type": "application/json" },
       body: body === undefined ? undefined : JSON.stringify(body),
       cache: "no-store",
       signal: AbortSignal.timeout(60_000),
     });
   } catch {
-    throw new ToolsError(`Can't reach ${company.cooName} right now. Try again in a minute.`);
+    throw new ToolsError(`Can't reach ${space.cooName} right now. Try again in a minute.`);
   }
   const data = await res.json().catch(() => null);
   if (!res.ok) throw new ToolsError(typeof data?.error === "string" ? data.error : "Something went wrong. Try again.");

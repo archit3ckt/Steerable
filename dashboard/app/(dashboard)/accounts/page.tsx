@@ -4,7 +4,7 @@ import Link from "next/link";
 import { AtSign, KeyRound } from "lucide-react";
 import { Card, PageHeader, Pill, SectionHeader, Skeleton } from "../../../src/ui";
 import { ago } from "../../../src/format";
-import { company, now } from "../../../local/host";
+import { currentCompany, now } from "../../../local/host";
 import { accountsOverview, ToolsError, type AccountsOverview } from "../../../local/tools";
 import { AccountActions, MailboxCard, PhoneForm } from "./parts";
 
@@ -13,14 +13,23 @@ export const metadata: Metadata = { title: "Accounts" };
 export default function Page({ searchParams }: PageProps<"/accounts">) {
   return (
     <div className="mx-auto max-w-3xl">
-      <PageHeader
-        title={`${company.cooName}'s accounts`}
-        subtitle={`${company.cooName} has an email of its own, and signs up to sites your business needs with it, always with your OK. Everything it has is listed here, and you can take any of it over.`}
-      />
+      <Suspense fallback={<PageHeader title="Accounts" />}>
+        <Header />
+      </Suspense>
       <Suspense fallback={<Skeleton className="h-[28rem] rounded-3xl" />}>
         <Accounts searchParams={searchParams} />
       </Suspense>
     </div>
+  );
+}
+
+async function Header() {
+  const company = await currentCompany();
+  return (
+    <PageHeader
+      title={`${company.cooName}'s accounts`}
+      subtitle={`${company.cooName} has an email of its own, and signs up to sites your business needs with it, always with your OK. Everything it has is listed here, and you can take any of it over.`}
+    />
   );
 }
 
@@ -34,7 +43,7 @@ async function Accounts({ searchParams }: { searchParams: PageProps<"/accounts">
     return <Card className="p-6 text-ink-2">{error.message}</Card>;
   }
   const at = await now();
-  const coo = company.cooName;
+  const coo = (await currentCompany()).cooName;
 
   return (
     <div className="space-y-10">

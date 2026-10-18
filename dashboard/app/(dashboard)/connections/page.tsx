@@ -4,7 +4,7 @@ import Link from "next/link";
 import { Check, ExternalLink, Globe, Plug, ShieldCheck } from "lucide-react";
 import { Card, PageHeader, SectionHeader, Skeleton } from "../../../src/ui";
 import { ago } from "../../../src/format";
-import { company, now } from "../../../local/host";
+import { currentCompany, now } from "../../../local/host";
 import {
   aiStatus,
   extensionStatus,
@@ -27,10 +27,9 @@ export const metadata: Metadata = { title: "Connections" };
 export default function Page({ searchParams }: PageProps<"/connections">) {
   return (
     <div className="mx-auto max-w-3xl">
-      <PageHeader
-        title="Connections"
-        subtitle={`The services your business runs on. ${company.cooName} looks things up in them on its own, and asks you before changing anything.`}
-      />
+      <Suspense fallback={<PageHeader title="Connections" />}>
+        <Header />
+      </Suspense>
       <Suspense fallback={<Skeleton className="h-[32rem] rounded-3xl" />}>
         <Connections searchParams={searchParams} />
       </Suspense>
@@ -38,8 +37,19 @@ export default function Page({ searchParams }: PageProps<"/connections">) {
   );
 }
 
+async function Header() {
+  const company = await currentCompany();
+  return (
+    <PageHeader
+      title="Connections"
+      subtitle={`The services your business runs on. ${company.cooName} looks things up in them on its own, and asks you before changing anything.`}
+    />
+  );
+}
+
 async function Connections({ searchParams }: { searchParams: PageProps<"/connections">["searchParams"] }) {
   const q = await searchParams;
+  const company = await currentCompany();
   const note =
     typeof q.connected === "string"
       ? { ok: true, text: `${q.connected} is connected.` }
@@ -115,7 +125,7 @@ async function Connections({ searchParams }: { searchParams: PageProps<"/connect
 
       {tab === "services" && (
         <>
-          {data.claudeAccount && <ClaudeConnectors />}
+          {data.claudeAccount && <ClaudeConnectors company={company} />}
 
           {data.connected.length > 0 && (
             <section>
@@ -235,7 +245,7 @@ const TABS: [Tab, string][] = [
   ["ai", "AI and Telegram"],
 ];
 
-function ClaudeConnectors() {
+function ClaudeConnectors({ company }: { company: { cooName: string } }) {
   return (
     <Card className="flex gap-4 p-5">
       <span className="grid size-10 shrink-0 place-items-center rounded-full bg-violet-soft text-violet">

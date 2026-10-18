@@ -30,6 +30,16 @@ Settings live in `~/steerable-docker/.env` (see [.env.example](../.env.example))
 
 **Moving a company:** "Download your company" in the dashboard gives you one file with everything your COO knows. Start a new install from it with `sh get.sh --import company.tar.gz`, or bring it to Steerable Cloud when you sign up.
 
+**More than one business or project (spaces):** each space has its own COO, memory, chat, routines and connections, kept apart from your others, all in one dashboard (switch from the menu next to the business name). Add one in your install folder:
+
+```bash
+sh get.sh --add-space "Bloom Events" --coo Max            # a new space
+sh get.sh --add-space "Bloom Events" --import company.tar.gz   # one you already have (a download from another Steerable)
+sh get.sh --remove-space s2                                # stop one; its data stays until you delete its volume
+```
+
+Each space is its own engine container (about 150 MB of memory), listed in `spaces.list` and started from `spaces.yml`, which get.sh writes and adds to `.env` as `COMPOSE_FILE`. They share your API key and settings from `.env`, except Telegram: one bot can only talk to one space, so the others connect their own on their Connections page. A Claude sign-in is per space. To bring two installs together, download the company from one ("Download your company") and add it to the other with `--import`.
+
 **Connect to Steerable Cloud** (optional): keep running it yourself, but get AI included in a plan instead of your own key, connected accounts like Gmail and Calendar through Steerable's verified apps, and **Steerable playbooks**: a library of proven know-how on running a business (cash flow, pricing, getting paid, customers, hiring, planning) that your COO works from. Choose "On my own server" when you sign up, then copy `STEERABLE_URL` and `STEERABLE_KEY` from its "Your server" page into `.env` and run `docker compose up -d`.
 
 ### On your machine

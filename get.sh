@@ -11,16 +11,25 @@
 # From a checkout, building the images here instead of pulling them: sh get.sh --build
 # Starting from a company you already have (an export from your dashboard or Steerable Cloud):
 #   sh get.sh --import company.tar.gz
+# Another space (a separate business or project, with its own COO, in the same dashboard):
+#   sh get.sh --add-space "Bloom Events" [--coo Juno] [--import company.tar.gz]
+#   sh get.sh --remove-space s2     (stops it; its data is kept until you delete its volume)
 set -eu
 
 REPO_RAW="${STEERABLE_RAW:-https://raw.githubusercontent.com/archit3ckt/steerable/master}"
 DIR="${STEERABLE_DIR:-$HOME/steerable-docker}"
 BUILD=""
 IMPORT=""
+ADD_SPACE=""
+SPACE_COO=""
+REMOVE_SPACE=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --build) BUILD="--build" ;;
     --import) IMPORT="${2:-}"; shift ;;
+    --add-space) ADD_SPACE="${2:-}"; shift; [ -n "$ADD_SPACE" ] || { echo "--add-space needs a name" >&2; exit 2; } ;;
+    --coo) SPACE_COO="${2:-}"; shift ;;
+    --remove-space) REMOVE_SPACE="${2:-}"; shift ;;
     *) echo "Unknown option: $1" >&2; exit 2 ;;
   esac
   shift
@@ -124,20 +133,85 @@ EOF
   ok "Saved your settings in $DIR/.env (only you can read it)"
 fi
 
+# ---------- spaces ----------
+# Extra spaces are more engines next to the first, each with its own company volume and shared
+# folder, listed in spaces.list (id|name|COO) and written out as spaces.yml, which .env's
+# COMPOSE_FILE adds to docker-compose.yml. The dashboard lists them from STEERABLE_SPACES.
+write_spaces() {
+  {
+    echo "# Your extra spaces, made by get.sh --add-space from spaces.list. Don't edit: run get.sh again."
+    echo "services:"
+    json=""
+    while IFS='|' read -r id name coo; do
+      [ -n "$id" ] || continue
+      echo "  engine-$id:"
+      echo "    extends: { file: docker-compose.yml, service: engine }"
+      echo "    environment:"
+      echo "      COMPANY_NAME: '$name'"
+      echo "      STEERABLE_SHARED_DIR: /shared/$id"
+      echo "      TELEGRAM_BOT_TOKEN: \"\"   # one bot per space: each connects its own on its Connections page"
+      echo "    volumes:"
+      echo "      - company-$id:/company"
+      json="$json${json:+,}{\"id\":\"$id\",\"name\":\"$name\",\"cooName\":\"$coo\",\"url\":\"http://engine-$id:8787\",\"tokenFile\":\"/shared/$id/agent-token\"}"
+    done < spaces.list
+    echo "  dashboard:"
+    echo "    environment:"
+    echo "      STEERABLE_SPACES: '[$json]'"
+    echo "volumes:"
+    while IFS='|' read -r id name coo; do [ -n "$id" ] && echo "  company-$id:"; done < spaces.list
+    true
+  } > spaces.yml
+  files="docker-compose.yml"
+  [ -f docker-compose.override.yml ] && files="$files:docker-compose.override.yml"
+  [ -s spaces.list ] && files="$files:spaces.yml"
+  grep -v '^COMPOSE_FILE=' .env > .env.new || true
+  echo "COMPOSE_FILE=$files" >> .env.new
+  cat .env.new > .env && rm -f .env.new
+}
+
+if [ -n "$REMOVE_SPACE" ]; then
+  { [ -f spaces.list ] && grep -q "^$REMOVE_SPACE|" spaces.list; } || fail "There's no space $REMOVE_SPACE" "Your spaces are listed in $DIR/spaces.list."
+  grep -v "^$REMOVE_SPACE|" spaces.list > spaces.list.new || true
+  mv spaces.list.new spaces.list
+  write_spaces
+  docker compose up -d --remove-orphans $BUILD >/dev/null || fail "Couldn't apply the change"
+  ok "Space $REMOVE_SPACE is stopped and gone from the dashboard"
+  printf "  ${D}Its data is kept. To delete it for good: docker volume ls | grep company-%s, then docker volume rm it${N}\n" "$REMOVE_SPACE"
+  exit 0
+fi
+
+if [ -n "$ADD_SPACE" ]; then
+  case "$ADD_SPACE$SPACE_COO" in *"'"*|*'"'*|*'|'*|*'\'*) fail "Please avoid quotes, | and backslashes in names" "Run this again.";; esac
+  [ "${#ADD_SPACE}" -le 80 ] || fail "Keep the name under 80 characters"
+  touch spaces.list
+  # Run again with the same name (after a failed start, say): the same space, not a second one.
+  SPACE_ID=$(awk -F'|' -v name="$ADD_SPACE" '$2 == name { print $1; exit }' spaces.list)
+  if [ -z "$SPACE_ID" ]; then
+    n=2; while grep -q "^s$n|" spaces.list; do n=$((n + 1)); done
+    SPACE_ID="s$n"
+    echo "$SPACE_ID|$ADD_SPACE|${SPACE_COO:-Juno}" >> spaces.list
+  fi
+  write_spaces
+  ok "Added the space $ADD_SPACE ($SPACE_ID)"
+fi
+
 if [ -n "$BUILD" ]; then
   step "Building and starting (the first build takes a few minutes)"
 else
   step "Downloading and starting"
   docker compose pull -q || fail "Couldn't download the images" "Check your connection, then run this again."
 fi
+ENGINE=engine; SHARED=/shared
+[ -n "$ADD_SPACE" ] && ENGINE="engine-$SPACE_ID" && SHARED="/shared/$SPACE_ID"
 if [ -n "$IMPORT" ]; then
   # Hand the archive to the engine before its first start; it brings the files in then.
   docker compose up --no-start $BUILD >/dev/null || fail "Couldn't create the containers"
-  if docker compose run --rm --no-deps --entrypoint test engine -d /company/.git 2>/dev/null; then
+  docker compose run --rm --no-deps --entrypoint mkdir "$ENGINE" -p "$SHARED" >/dev/null 2>&1 || true
+  if docker compose run --rm --no-deps --entrypoint test "$ENGINE" -d /company/.git 2>/dev/null; then
     printf "${Y}!${N} This install already has a company, so %s wasn't brought in.\n" "$IMPORT"
     printf "  ${D}To replace it (this deletes the current one): docker compose down -v, then run this again.${N}\n"
   else
-    docker compose cp "$IMPORT" engine:/shared/import.tar.gz || fail "Couldn't hand over $IMPORT"
+    docker compose cp "$IMPORT" "$ENGINE:$SHARED/import.tar.gz" || fail "Couldn't hand over $IMPORT"
     ok "Your company's files will come in on the first start"
   fi
 fi
@@ -149,7 +223,7 @@ ok "Steerable is running"
 printf "\n  Open ${B}http://localhost:%s${N} and sign in with your passphrase.\n" "$port"
 if ! grep -q "^ANTHROPIC_API_KEY='\?[^' ]" .env; then
   printf "  ${Y}!${N} No API key: sign your COO in to Claude once:\n"
-  printf "    ${B}docker compose -f %s/docker-compose.yml exec -it engine claude${N}   then type /login\n" "$DIR"
+  printf "    ${B}cd %s && docker compose exec -it %s claude${N}   then type /login\n" "$DIR" "$ENGINE"
 fi
 printf "\n  ${D}Update:  cd %s && docker compose pull && docker compose up -d${N}\n" "$DIR"
 printf "  ${D}Logs:    docker compose -f %s/docker-compose.yml logs -f engine${N}\n" "$DIR"

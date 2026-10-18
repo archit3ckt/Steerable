@@ -2,7 +2,8 @@ import { Suspense } from "react";
 import { Download, LogOut, Plug, Sparkles } from "lucide-react";
 import { CompanyCard, DashboardShell } from "../../src/shell";
 import { ThemeToggle } from "../../src/theme-toggle";
-import { company, host } from "../../local/host";
+import { currentCompany, currentSpace, host, spaces } from "../../local/host";
+import { SpaceSwitcher } from "./space-switcher";
 import { signOut } from "../../local/login";
 import { aiStatus } from "../../local/tools";
 
@@ -51,6 +52,7 @@ function SignOut() {
 async function AiNotice() {
   const ai = await aiStatus().catch(() => null);
   if (ai?.claude.method !== "none") return null;
+  const company = await currentCompany();
   return (
     <a
       href="/connections"
@@ -65,11 +67,21 @@ async function AiNotice() {
   );
 }
 
+/** The current space's card, with the menu of spaces. */
+async function SpaceCard() {
+  const [space, company] = await Promise.all([currentSpace(), currentCompany()]);
+  return (
+    <SpaceSwitcher current={space.id} spaces={spaces().map((s) => ({ id: s.id, name: s.name }))}>
+      <CompanyCard host={host} fallback={company} />
+    </SpaceSwitcher>
+  );
+}
+
 export default function DashboardLayout({ children }: LayoutProps<"/">) {
   return (
     <DashboardShell
       host={host}
-      company={() => <CompanyCard host={host} fallback={company} />}
+      company={() => <SpaceCard />}
       footer={<Account />}
       header={<Account phone />}
       after={

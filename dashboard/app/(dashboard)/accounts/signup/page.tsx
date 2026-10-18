@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { Suspense } from "react";
 import { ShieldCheck } from "lucide-react";
 import { Card, PageHeader, Skeleton } from "../../../../src/ui";
-import { company } from "../../../../local/host";
+import { currentCompany } from "../../../../local/host";
 import { accountsOverview, cooAccount, ToolsError, type AccountsOverview, type CooAccount } from "../../../../local/tools";
 import { LiveLogin } from "../../../../src/live-login";
 
@@ -30,6 +30,7 @@ async function Signup({ searchParams }: { searchParams: PageProps<"/accounts/sig
     return <Card className="p-6 text-ink-2">{error.message}</Card>;
   }
   const loggingIn = again === "1" || account.status === "ACTIVE";
+  const company = await currentCompany();
   return (
     <>
       <PageHeader
