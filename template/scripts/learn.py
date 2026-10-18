@@ -21,6 +21,7 @@ import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+import agent  # noqa: E402
 import library  # noqa: E402
 import skills  # noqa: E402
 from brief import add_extra  # noqa: E402
@@ -261,23 +262,19 @@ def main() -> int:
         return 0
     existing = "\n".join(f"- {n}: {skills.frontmatter(n).get('description', '')}" for n in skills.names()) or "(none yet)"
     before = snapshot()
-    proc = subprocess.run(
-        ["claude", "-p", "--output-format", "json", "--model", "sonnet", "--max-budget-usd", CAP_USD,
-         "--json-schema", json.dumps(CHANGES_SCHEMA),
-         "--allowedTools", "Read(./**)", "Glob", "Grep", "Edit(./.claude/skills/**)", "Write(./.claude/skills/**)",
-         "--disallowedTools", "Read(./.env)", "Read(./.cache/**)", "Edit(./.claude/skills/.registry.json)",
-         "Write(./.claude/skills/.registry.json)"],
-        input=PROMPT.format(skills=existing, digest=digest), cwd=ROOT, capture_output=True, text=True,
-        timeout=1200)
-    try:
-        out = json.loads(proc.stdout)
-        result = out.get("structured_output") or json.loads(out["result"])
-    except (ValueError, KeyError, TypeError):
+    out = agent.run(
+        PROMPT.format(skills=existing, digest=digest), budget_usd=CAP_USD, schema=CHANGES_SCHEMA,
+        allow=["Read(./**)", "Glob", "Grep", "Edit(./.claude/skills/**)", "Write(./.claude/skills/**)"],
+        deny=["Read(./.env)", "Read(./.cache/**)", "Edit(./.claude/skills/.registry.json)",
+              "Write(./.claude/skills/.registry.json)"],
+        cwd=ROOT, timeout=1200, burst=False, prompt_on_stdin=True)
+    result = out.structured
+    if not result:
         restore(before)
-        print(f"Quality check failed: the review returned no result. {proc.stderr[-300:]}")
+        print(f"Quality check failed: the review returned no result. {out.stderr[-300:]}")
         return 2
-    cost = float(out.get("total_cost_usd") or 0)
-    record("learn", cost, model="sonnet")
+    cost = out.cost
+    record("learn", cost, model=out.model)
 
     problems = quality_problems(before)
     if problems:

@@ -244,6 +244,16 @@ class FakeGateway(http.server.BaseHTTPRequestHandler):
             return
         elif self.path.startswith("/x/google/"):
             body, status = {"error": "Google isn't connected. The owner can connect it in Connections.", "connect": "google"}, 409
+        elif self.path == "/v1/messages":  # one-question calls (agent.complete) go to the model through the gateway
+            asked = json.loads(FakeGateway.calls[-1]["body"])
+            prompt = asked["messages"][-1]["content"][-1]["text"]
+            answer = {}
+            if "flow chart" in prompt and "Describe this routine" in prompt:
+                answer = {"steps": [{"kind": "trigger", "label": "Every week"}, {"kind": "read", "label": "Check which cafes reordered"},
+                                    {"kind": "send", "label": "Remind the quiet ones", "service": "Gmail"}]}
+            body, status = {"id": "m1", "type": "message", "role": "assistant", "model": asked["model"],
+                            "content": [{"type": "text", "text": json.dumps(answer)}], "stop_reason": "end_turn",
+                            "usage": {"input_tokens": 900, "output_tokens": 80}}, 200
         else:
             body, status = {"ok": True}, 200
         data = json.dumps(body).encode()
@@ -272,6 +282,7 @@ class AgentApiTest(unittest.TestCase):
             cls.port = s.getsockname()[1]
         (cls.tmp / "home").mkdir()
         cls.gateway_env = {"STEERABLE_GATEWAY_URL": f"http://127.0.0.1:{cls.gateway.server_address[1]}",
+                           "ANTHROPIC_BASE_URL": f"http://127.0.0.1:{cls.gateway.server_address[1]}",
                            "ANTHROPIC_API_KEY": "sk-steerable-test-token"}
         env = {**os.environ, **cls.gateway_env, "AGENT_API_PORT": str(cls.port), "HOME": str(cls.tmp / "home"),
                "GIT_AUTHOR_NAME": "COO", "GIT_AUTHOR_EMAIL": "coo@test", "GIT_COMMITTER_NAME": "COO",
@@ -850,9 +861,9 @@ mcp_call("notion", "search", {})
             env = {k: v for k, v in os.environ.items() if k != "STEERABLE_CONTEXT"}
             subprocess.run([sys.executable, "-c", script], cwd=self.root, check=True, capture_output=True,
                            env={**env, **self.gateway_env, **extra})
-            # Service calls only: a chat turn's check of the Goals page may still be asking Jev.
+            # Service calls only: a chat turn's check of the Goals page may still be asking Jev or the model.
             marks = {c["headers"].get("X-Steerable-Context") for c in FakeGateway.calls
-                     if not c["path"].startswith(("/jev", "/budget"))}
+                     if not c["path"].startswith(("/jev", "/budget", "/v1/messages"))}
             self.assertEqual(marks, {"routine"} if context else {None})
 
     def test_22_questions_with_a_pick(self):

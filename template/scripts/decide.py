@@ -24,17 +24,15 @@ Identical questions are cached in .cache/decide.json, so repeats cost nothing.
 import hashlib
 import json
 import sys
-import subprocess
-import tempfile
 import urllib.error
 import urllib.request
 from dataclasses import asdict, dataclass
 
-from budget import check, cost_of, record, record_usage
+import agent
+from budget import check, cost_of, record
 from common import CACHE, env, log_run
 
 CACHE_FILE = CACHE / "decide.json"
-HAIKU = "claude-haiku-4-5"
 JEV_ENDPOINT = "https://api.typesafe.ai/v1/systemone"
 
 
@@ -122,34 +120,7 @@ def _haiku(question, options: dict, context) -> Decision:
               "Pick exactly one option. confidence is 0 to 1. reason is at most 15 words.")
     if context:
         prompt += f"\n\n<context>\n{context}\n</context>"
-    if not env("ANTHROPIC_API_KEY"):
-        return _haiku_by_account(prompt, schema)
-    import anthropic
-
-    response = anthropic.Anthropic().messages.create(
-        model=HAIKU,
-        max_tokens=256,
-        messages=[{"role": "user", "content": prompt}],
-        output_config={"format": {"type": "json_schema", "schema": schema}},
-    )
-    record_usage("decide", HAIKU, response.usage)
-    data = json.loads(next(b.text for b in response.content if b.type == "text"))
-    return Decision(data["choice"], float(data["confidence"]), "haiku", data["reason"])
-
-
-def _haiku_by_account(prompt: str, schema: dict) -> Decision:
-    """Haiku through Claude Code, for an engine signed in with a Claude account and no API key
-    (the SDK can't use the account). Run from a neutral folder, so it doesn't load the
-    company's CLAUDE.md for one small question."""
-    proc = subprocess.run(["claude", "-p", prompt, "--model", "haiku", "--output-format", "json",
-                           "--json-schema", json.dumps(schema), "--max-budget-usd", "0.05"],
-                          capture_output=True, text=True, timeout=120, cwd=tempfile.gettempdir())
-    try:
-        out = json.loads(proc.stdout)
-        data = out.get("structured_output") or json.loads(out["result"])
-    except (json.JSONDecodeError, KeyError, TypeError):
-        raise RuntimeError(f"Haiku (Claude account) gave no answer: {(proc.stderr or proc.stdout)[-200:]}") from None
-    record("decide", float(out.get("total_cost_usd") or 0), "haiku", note="claude account")
+    data = agent.complete(prompt, source="decide", tier="fast", schema=schema, max_tokens=256, budget_usd="0.05")
     return Decision(data["choice"], float(data["confidence"]), "haiku", data.get("reason", ""))
 
 

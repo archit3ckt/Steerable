@@ -19,24 +19,21 @@ State in .cache/supervision.json, per routine: {"since", "runs", "clean", "notes
     python scripts/supervise.py                 # what's watched
 """
 import ast
-import base64
 import fcntl
 import json
 import os
 import re
-import subprocess
 import sys
-import tempfile
 from contextlib import contextmanager
 from pathlib import Path
 
-from budget import BudgetExceeded, check as budget_check, record, record_usage
-from common import CACHE, ROOT, env, log_run, now_iso, task_title
+import agent
+from budget import BudgetExceeded, check as budget_check
+from common import CACHE, ROOT, log_run, now_iso, task_title
 
 STATE = CACHE / "supervision.json"
 WATCH_RUNS = 3
 CHECKS_PER_RUN = 30  # past this, the rest are held: a run shouldn't do that much unwatched by the owner
-MODEL = "claude-sonnet-5-5"
 NOTES_KEPT = 30
 
 _checks = 0
@@ -91,35 +88,11 @@ def stop(workflow: str) -> None:
 # ---------- asking the AI ----------
 
 def _ask(prompt: str, images: list[Path], schema: dict, source: str, cap_usd: str = "0.30", max_tokens: int = 1500) -> dict:
-    """One question to Claude, with pictures. Through the API when there's a key (the gateway in
-    Steerable Cloud), else Claude Code signed in with the owner's Claude account."""
+    """One question to the smart model, with pictures (agent.complete: the API when there's a key,
+    the gateway in Steerable Cloud, else the coding agent signed in with the owner's account)."""
     budget_check()
-    if env("ANTHROPIC_API_KEY"):
-        import anthropic
-
-        content = [{"type": "image", "source": {"type": "base64", "media_type": "image/jpeg",
-                                                 "data": base64.b64encode(p.read_bytes()).decode()}} for p in images]
-        content.append({"type": "text", "text": prompt})
-        response = anthropic.Anthropic().messages.create(
-            model=MODEL, max_tokens=max_tokens, messages=[{"role": "user", "content": content}],
-            output_config={"format": {"type": "json_schema", "schema": schema}})
-        record_usage(source, MODEL, response.usage)
-        return json.loads(next(b.text for b in response.content if b.type == "text"))
-    where = ""
-    if images:
-        where = "\n\nLook at these pictures of the page first (Read them): " + ", ".join(str(p) for p in images)
-    allowed = [f"Read({p})" for p in images]
-    proc = subprocess.run(["claude", "-p", prompt + where, "--model", "sonnet", "--output-format", "json",
-                           "--json-schema", json.dumps(schema), "--max-budget-usd", cap_usd,
-                           *(["--allowedTools", *allowed] if allowed else [])],
-                          capture_output=True, text=True, timeout=300, cwd=tempfile.gettempdir())
-    try:
-        out = json.loads(proc.stdout)
-        data = out.get("structured_output") or json.loads(out["result"])
-    except (ValueError, KeyError, TypeError):
-        raise RuntimeError(f"No answer: {(proc.stderr or proc.stdout)[-200:]}") from None
-    record(source, float(out.get("total_cost_usd") or 0), "sonnet", note="claude account")
-    return data
+    return agent.complete(prompt, source=source, tier="smart", schema=schema, images=images,
+                          max_tokens=max_tokens, budget_usd=cap_usd)
 
 
 def _routine_about(workflow: str) -> str:

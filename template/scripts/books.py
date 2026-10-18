@@ -26,7 +26,7 @@ from html.parser import HTMLParser
 from pathlib import Path
 from xml.etree import ElementTree
 
-import burst
+import agent
 import files
 import library
 from common import CACHE, ROOT, alive, log_run, now_iso
@@ -352,27 +352,20 @@ def study(bid: str) -> int:
     LIVE.mkdir(parents=True, exist_ok=True)
     live = LIVE / f"{bid}.jsonl"
     live.unlink(missing_ok=True)
-    cmd = ["claude", "-p", _prompt(b, notes), "--output-format", "stream-json", "--verbose", "--model", "sonnet",
-           "--max-budget-usd", STUDY_CAP_USD, "--permission-mode", "default",
-           "--allowedTools", f"Read(./books/{bid}/**)", "Read(./memory/**)", "Glob",
-           # Claude Code grants file writes through Edit rules (Write alone isn't enough), so both.
-           *(f"{tool}(./books/{bid}/{name})" for tool in ("Edit", "Write") for name in ("notes.md", "proposals.json")),
-           # Edit rules cover every file-writing tool (Write too), so writes are limited by the allow list above.
-           "--disallowedTools", "Bash", "WebFetch", "WebSearch", "Read(./.env)", "Read(./.cache/**)", "Read(./.home/**)"]
     try:
-        proc = burst.run(cmd, kind="claude", timeout=3600, stream=live)
+        out = agent.run(
+            _prompt(b, notes), budget_usd=STUDY_CAP_USD, permission_mode="default",
+            allow=[f"Read(./books/{bid}/**)", "Read(./memory/**)", "Glob",
+                   # Claude Code grants file writes through Edit rules (Write alone isn't enough), so both.
+                   *(f"{tool}(./books/{bid}/{name})" for tool in ("Edit", "Write") for name in ("notes.md", "proposals.json"))],
+            # Edit rules cover every file-writing tool (Write too), so writes are limited by the allow list above.
+            deny=["Bash", "WebFetch", "WebSearch", "Read(./.env)", "Read(./.cache/**)", "Read(./.home/**)"],
+            timeout=3600, live=live)
     except Exception as e:  # noqa: BLE001
         return _fail(bid, f"The study couldn't start ({type(e).__name__}).")
-    cost = 0.0
-    for line in (proc.stdout or "").splitlines():
-        try:
-            event = json.loads(line)
-        except json.JSONDecodeError:
-            continue
-        if isinstance(event, dict) and "total_cost_usd" in event:
-            cost = float(event.get("total_cost_usd") or 0)
+    cost = out.cost
     if cost:
-        record("book-study", cost, model="sonnet", note=b["title"][:60])
+        record("book-study", cost, model=out.model, note=b["title"][:60])
     with connect() as con:
         con.execute("UPDATE books SET cost = cost + ? WHERE id = ?", (cost, bid))
     try:

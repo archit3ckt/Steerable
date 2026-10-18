@@ -133,6 +133,26 @@ d.choice, d.confidence, d.backend
 | Drafting, summarizing, moderate judgment | Sonnet 5.5 |
 | Strategy, pricing, hard high-value reasoning | Opus 5.5 |
 
+### Any model, any coding agent
+
+Everything that calls the AI goes through `scripts/agent.py`, so neither the model nor the coding
+agent is written into the scripts that use it:
+
+- `agent.run()` runs an agent with tools: the chat, building and fixing routines, studying a book,
+  the learning review. `agent.complete()` asks one question: decisions, flow charts, reviews.
+- Models are asked for by tier. `STEERABLE_MODEL_SMART` (default `sonnet`) does the chat, builds,
+  fixes and reviews; `STEERABLE_MODEL_FAST` (default `haiku`) the small decisions. A tier's value
+  is any name: an alias, a full model id, or a name a gateway routes to another provider (Steerable
+  Cloud's gateway can send any name to OpenAI, Gemini, OpenRouter, GLM, Kimi, DeepSeek or a local
+  model, translating the API both ways).
+- `STEERABLE_AGENT` picks the coding agent: `claude` (Claude Code, the default) or `opencode`
+  (OpenCode; needs an API key or a gateway, not a Claude account; build the image with
+  `--build-arg WITH_OPENCODE=1`). Permission rules are written once, in Claude Code's syntax, and
+  translated for OpenCode; OpenCode's output is turned into Claude Code's, so results, the live
+  activity in the app and costs read the same. Known differences with OpenCode: no approvals from
+  chat for changes in connected services (they're refused instead), and the run's budget is
+  checked between steps rather than inside one.
+
 ## Skills the COO learns
 
 Skills are procedural memory: how to do a class of task *for this CEO*. Claude Code loads one only when its description matches the task at hand.

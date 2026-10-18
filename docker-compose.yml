@@ -27,6 +27,10 @@ services:
       ANTHROPIC_BASE_URL: ${STEERABLE_URL:-${ANTHROPIC_BASE_URL:-}}
       STEERABLE_GATEWAY_URL: ${STEERABLE_URL:-}
       MONTHLY_BUDGET_USD: ${MONTHLY_BUDGET_USD:-20}
+      # Which coding agent and models (template/scripts/agent.py). Empty: Claude Code, Sonnet, Haiku.
+      STEERABLE_AGENT: ${STEERABLE_AGENT:-}
+      STEERABLE_MODEL_SMART: ${STEERABLE_MODEL_SMART:-}
+      STEERABLE_MODEL_FAST: ${STEERABLE_MODEL_FAST:-}
       DECIDE_BACKEND: ${DECIDE_BACKEND:-}   # empty: Jev when it has a key, else Haiku
       JEV_API_KEY: ${JEV_API_KEY:-}
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}

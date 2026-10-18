@@ -4,12 +4,17 @@
 FROM python:3.12-slim
 
 ARG CLAUDE_CODE_VERSION=latest
+# OpenCode, the other coding agent the engine can run (STEERABLE_AGENT=opencode, agent.py).
+# Off by default: --build-arg WITH_OPENCODE=1 adds it.
+ARG WITH_OPENCODE=0
+ARG OPENCODE_VERSION=latest
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1 PIP_DISABLE_PIP_VERSION_CHECK=1
 
 RUN apt-get update \
  && apt-get install -y --no-install-recommends git nodejs npm tini ca-certificates tzdata \
  && npm install -g "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}" \
+ && if [ "$WITH_OPENCODE" = "1" ]; then npm install -g "opencode-ai@${OPENCODE_VERSION}"; fi \
  && npm cache clean --force \
  && rm -rf /var/lib/apt/lists/*
 

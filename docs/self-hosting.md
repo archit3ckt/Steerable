@@ -81,6 +81,8 @@ Settings live in each company's `.env`. Change them with `steerable config set K
 |---|---|---|
 | `ANTHROPIC_API_KEY` | none | Used by `decide()`, the incident fixer and the learning loop |
 | `MONTHLY_BUDGET_USD` | `20` | Hard cap on paid API spend per month |
+| `STEERABLE_MODEL_SMART`, `STEERABLE_MODEL_FAST` | `sonnet`, `haiku` | The models for the chat and builds, and for small decisions. Any model name your provider knows ([how it works](how-it-works.md#any-model-any-coding-agent)) |
+| `STEERABLE_AGENT` | `claude` | The coding agent: `claude` (Claude Code) or `opencode` (needs an API key and an image built with `WITH_OPENCODE=1`) |
 | `DECIDE_BACKEND` | `haiku` (`jev` when connected to Steerable) | `haiku`, `jev`, or `rules` (no model, keyword rules only) |
 | `JEV_API_KEY` | none | Required when `DECIDE_BACKEND=jev` |
 | `JEV_MIN_CONFIDENCE` | `0.6` | Below this, Jev hands the decision to Haiku |

@@ -17,11 +17,11 @@ background the first time the page is opened, and the chart appears when it's do
     python scripts/flow.py <workflow>      # describe one now
 """
 import json
-import subprocess
 import sys
 import time
 
-from budget import BudgetExceeded, check, record
+import agent
+from budget import BudgetExceeded, check
 from common import CACHE, ROOT, log_run
 
 KINDS = ["trigger", "read", "think", "write", "ask", "send", "save"]
@@ -96,17 +96,11 @@ def describe(workflow: str, schedule: str = "") -> list[dict] | None:
         return None
     prompt = (f"Describe this routine's steps for the business owner's flow chart. It runs: {schedule or 'on a schedule'}.\n"
               f"{GUIDE}\nReturn only the JSON.\n\n--- workflows/{workflow}.py ---\n{code_file.read_text()[:16000]}")
-    proc = subprocess.run(["claude", "-p", prompt, "--output-format", "json", "--model", "haiku",
-                           "--max-budget-usd", CAP_USD, "--json-schema", json.dumps(SCHEMA),
-                           "--permission-mode", "dontAsk", "--max-turns", "3"],
-                          cwd=ROOT, capture_output=True, text=True, timeout=300)
     try:
-        out = json.loads(proc.stdout)
-        data = out.get("structured_output") or json.loads(out.get("result") or "{}")
-    except (json.JSONDecodeError, TypeError):
-        log_run("flow", "error", workflow=workflow, stderr=proc.stderr[-500:])
+        data = agent.complete(prompt, source="flow", tier="fast", schema=SCHEMA, max_tokens=2000, budget_usd=CAP_USD)
+    except Exception as e:  # noqa: BLE001
+        log_run("flow", "error", workflow=workflow, stderr=str(e)[-500:])
         return None
-    record("flow", float(out.get("total_cost_usd") or 0), model="haiku", note=workflow)
     steps = valid(data)
     if steps:
         path(workflow).write_text(json.dumps({"steps": steps}, indent=1) + "\n")

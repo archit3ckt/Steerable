@@ -27,6 +27,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+import agent
 import burst
 import flow
 import integrations
@@ -388,31 +389,28 @@ def build(bid: str) -> None:
     git("worktree", "add", "-q", str(wt), "-b", branch, b.get("base") or "HEAD")
     link_shared(wt)
 
-    # Connected services as MCP tools, always in dry-run mode: exploring can't change anything.
-    mcp_args, mcp_tools = integrations.claude_mcp_args(dry_run=True)
-    cmd = ["claude", "-p", _prompt(b, str(wt)), "--output-format", "stream-json", "--verbose",
-           "--model", "sonnet", "--max-budget-usd", PER_BUILD_CAP_USD,
-           "--json-schema", json.dumps(RESULT_SCHEMA), *mcp_args, "--add-dir", str(wt),
-           # Reads: project and worktree. Writes: the worktree only. Runs: python and git there. Secrets denied.
-           "--allowedTools", *mcp_tools, "Read(./**)", f"Read(/{wt}/**)", "Glob", "Grep", "WebFetch", "WebSearch",
-           f"Edit(/{wt}/**)", f"Write(/{wt}/**)", "Bash(.venv/bin/python scripts/ops_db.py*)",
-           f"Bash(cd {wt} && STEERABLE_DRY_RUN=1 .venv/bin/python *)", f"Bash(git -C {wt} *)",
-           f"Bash(cd {wt} && .venv/bin/python scripts/routine_check.py *)",
-           "--disallowedTools", "Read(./.env)", f"Read(/{wt}/.env)", "Read(./.cache/**)", f"Read(/{wt}/.cache/**)"]
     LIVE.mkdir(exist_ok=True)
-    proc = burst.run(cmd, kind="claude", timeout=2400, stream=live_path(bid))
-    try:
-        out = _result(proc.stdout)
-        result = out.get("structured_output") or json.loads(out["result"])
-    except (json.JSONDecodeError, KeyError, TypeError):
+    out = agent.run(
+        _prompt(b, str(wt)), budget_usd=PER_BUILD_CAP_USD, schema=RESULT_SCHEMA, add_dirs=[wt],
+        # Connected services as MCP tools, always in dry-run mode: exploring can't change anything.
+        mcp="dry",
+        # Reads: project and worktree. Writes: the worktree only. Runs: python and git there. Secrets denied.
+        allow=["Read(./**)", f"Read(/{wt}/**)", "Glob", "Grep", "WebFetch", "WebSearch",
+               f"Edit(/{wt}/**)", f"Write(/{wt}/**)", "Bash(.venv/bin/python scripts/ops_db.py*)",
+               f"Bash(cd {wt} && STEERABLE_DRY_RUN=1 .venv/bin/python *)", f"Bash(git -C {wt} *)",
+               f"Bash(cd {wt} && .venv/bin/python scripts/routine_check.py *)"],
+        deny=["Read(./.env)", f"Read(/{wt}/.env)", "Read(./.cache/**)", f"Read(/{wt}/.cache/**)"],
+        timeout=2400, live=live_path(bid))
+    result = out.structured
+    if not result:
         _cleanup(bid, name)
         update(bid, status="failed", summary="Something went wrong while I was building it.", needs="",
-               error=(proc.stderr or proc.stdout)[-1500:])
+               error=out.error)
         record_event(f"Couldn't build {b['title']}.", who="COO", workflow=name, status="Blocked")
         return
 
-    cost = float(out.get("total_cost_usd") or 0)
-    record("builder", cost, model="sonnet", note=bid)
+    cost = out.cost
+    record("builder", cost, model=out.model, note=bid)
     built = git("rev-list", "--count", f"HEAD..{branch}") not in ("", "0") and (wt / f"workflows/{name}.py").exists()
     status = result["status"] if (result["status"] != "built" or built) else "failed"
     # Whatever it was told, a build that changes the engine's own code is never merged.
@@ -560,21 +558,6 @@ def step_words(tool: str, args: dict) -> str | None:
     if tool == "Bash" and "ops_db.py" in cmd:
         return "Checking your goals"
     return None
-
-
-def _result(stdout: str) -> dict:
-    """The final event of a stream-json run (the one with the result)."""
-    found = None
-    for line in stdout.splitlines():
-        try:
-            event = json.loads(line)
-        except json.JSONDecodeError:
-            continue
-        if isinstance(event, dict) and "result" in event:
-            found = event
-    if found is None:
-        raise json.JSONDecodeError("no result", stdout, 0)
-    return found
 
 
 def _free_branch(branch: str) -> None:

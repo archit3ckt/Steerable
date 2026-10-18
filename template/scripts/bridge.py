@@ -13,18 +13,16 @@ The web app (through scripts/agent_api.py) shares the same session and chat log
 """
 import fcntl
 import json
-import os
 import re
 import subprocess
 import time
 from datetime import date
 
+import agent
 import builder
-import burst
 import files
 import guard
 import incident
-import integrations
 import telegram
 from brief import build, task_id
 from budget import BudgetExceeded, check, record
@@ -305,21 +303,6 @@ def converse(text: str, channel: str = "Telegram", show_prompt: bool = True, att
     return reply
 
 
-def _final(stdout: str) -> dict:
-    """The result of a `claude -p` run, printed as one JSON object or as stream-json events."""
-    found: dict = {}
-    for line in stdout.splitlines():
-        try:
-            event = json.loads(line)
-        except json.JSONDecodeError:
-            continue
-        if isinstance(event, dict) and "result" in event:
-            found = event
-    if not found:
-        raise json.JSONDecodeError("no result", stdout, 0)
-    return found
-
-
 def ask_claude(text: str, channel: str = "Telegram", live=None, run: str | None = None) -> str:
     """One turn in the shared session. With `live`, Claude's events are written to that file
     as they happen, so the app can show what it's doing."""
@@ -331,27 +314,18 @@ def ask_claude(text: str, channel: str = "Telegram", live=None, run: str | None 
     # The owner's connected services, as MCP tools. Calls no rule allows go to approvals.py,
     # which runs reads and puts changes in the owner's Decisions. "default" so that nothing
     # else (like auto mode's classifier) approves them instead.
-    mcp_args, mcp_tools = integrations.claude_mcp_args()
-    output = ["--output-format", "stream-json", "--verbose"] if live else ["--output-format", "json"]
-    cmd = ["claude", "-p", text, *output, "--model", "sonnet",
-           "--max-budget-usd", PER_MESSAGE_CAP_USD, "--append-system-prompt", system_prompt(channel),
-           "--permission-mode", "default", *mcp_args, "--allowedTools", *ALLOWED_TOOLS, *mcp_tools, "--disallowedTools", *DENIED_TOOLS]
-    if st.get("session_id"):
-        cmd += ["--resume", st["session_id"]]
-    proc = burst.run(cmd, kind="claude", timeout=900, stream=live,
-                     env={**os.environ, "STEERABLE_RUN": run} if run else None)
-    try:
-        out = _final(proc.stdout)
-    except json.JSONDecodeError:
-        log_run("bridge", "error", stderr=proc.stderr[-1000:])
+    out = agent.run(text, budget_usd=PER_MESSAGE_CAP_USD, system=system_prompt(channel), permission_mode="default",
+                    mcp="live", allow=ALLOWED_TOOLS, deny=DENIED_TOOLS, resume=st.get("session_id"),
+                    live=live, timeout=900, extra_env={"STEERABLE_RUN": run} if run else None)
+    if not out.ok:
+        log_run("bridge", "error", stderr=out.stderr[-1000:])
         return "Something went wrong on my side. It's logged, and I'll check it in the next session."
-    cost = float(out.get("total_cost_usd") or 0)
-    record("telegram-chat", cost, model="sonnet", note=text[:60])
-    st["session_id"] = out.get("session_id", st.get("session_id"))
+    record("telegram-chat", out.cost, model=out.model, note=text[:60])
+    st["session_id"] = out.session_id or st.get("session_id")
     telegram.save_state(st)
-    log_run("bridge", "error" if out.get("is_error") else "ok", cost_usd=cost,
+    log_run("bridge", "error" if out.is_error else "ok", cost_usd=out.cost,
             session=st["session_id"])
-    return out.get("result") or "(no reply)"
+    return out.text or "(no reply)"
 
 
 def set_approval(tid: str, approve: bool) -> str | None:

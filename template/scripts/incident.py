@@ -21,6 +21,7 @@ import subprocess
 import sys
 from datetime import datetime, timedelta, timezone
 
+import agent
 import burst
 import integrations
 import telegram
@@ -191,27 +192,23 @@ def investigate(iid: str) -> None:
 
     builder.link_shared(wt)  # settings, Python, the owner's services, values and website logins, for testing
 
-    cmd = ["claude", "-p", _prompt(inc, str(wt)), "--output-format", "json",
-           "--model", "sonnet", "--max-budget-usd", PER_INCIDENT_CAP_USD,
-           "--json-schema", json.dumps(VERDICT_SCHEMA), "--add-dir", str(wt),
-           # Reads: project and worktree only. Writes: the fix worktree and drafts/ only. Secrets denied.
-           "--allowedTools", "Read(./**)", f"Read(/{wt}/**)", "Glob", "Grep",
-           f"Edit(/{wt}/**)", f"Write(/{wt}/**)", "Edit(./drafts/**)", "WebFetch",
-           f"Bash(cd {wt} && .venv/bin/python *)", f"Bash(git -C {wt} *)",
-           "--disallowedTools", "Read(./.env)", f"Read(/{wt}/.env)", "Read(./.cache/**)", f"Read(/{wt}/.cache/**)"]
-    proc = burst.run(cmd, kind="claude", timeout=1800)
-    try:
-        out = json.loads(proc.stdout)
-        verdict = out.get("structured_output") or json.loads(out["result"])
-    except (json.JSONDecodeError, KeyError, TypeError):
+    out = agent.run(
+        _prompt(inc, str(wt)), budget_usd=PER_INCIDENT_CAP_USD, schema=VERDICT_SCHEMA, add_dirs=[wt],
+        # Reads: project and worktree only. Writes: the fix worktree and drafts/ only. Secrets denied.
+        allow=["Read(./**)", f"Read(/{wt}/**)", "Glob", "Grep",
+               f"Edit(/{wt}/**)", f"Write(/{wt}/**)", "Edit(./drafts/**)", "WebFetch",
+               f"Bash(cd {wt} && .venv/bin/python *)", f"Bash(git -C {wt} *)"],
+        deny=["Read(./.env)", f"Read(/{wt}/.env)", "Read(./.cache/**)", f"Read(/{wt}/.cache/**)"],
+        timeout=1800)
+    verdict = out.structured
+    if not verdict:
         update(iid, status="awaiting_ceo", verdict=None)
         _cleanup(iid)
-        alert(f"incident:{iid}", f"Couldn't diagnose: {inc['summary']}",
-              (proc.stderr or proc.stdout)[-1500:])
+        alert(f"incident:{iid}", f"Couldn't diagnose: {inc['summary']}", out.error)
         return
 
-    cost = float(out.get("total_cost_usd") or 0)
-    record("incident", cost, model="sonnet", note=iid)
+    cost = out.cost
+    record("incident", cost, model=out.model, note=iid)
     has_fix = git("rev-list", "--count", f"HEAD..{branch}") not in ("", "0")
     verdict["fix_ready"] = verdict.get("fix_ready") and has_fix
     if has_fix and (touched := engine_code_changed(branch)):
@@ -232,7 +229,7 @@ def investigate(iid: str) -> None:
             verdict.update(fix_ready=False, severity="ceo" if verdict["severity"] == "quiet" else verdict["severity"],
                            fix_summary="", recommendation="Keep it paused: my fix didn't work in its practice run, so I'll look again.")
             log_run("incident", "fix_failed_practice", incident=iid, output=practice["output"][-500:])
-    inc = update(iid, verdict=verdict, session_id=out.get("session_id"), cost_usd=cost)
+    inc = update(iid, verdict=verdict, session_id=out.session_id, cost_usd=cost)
     log_run("incident", "diagnosed", cost_usd=cost, incident=iid,
             severity=verdict["severity"], fix_ready=verdict["fix_ready"])
     record_event(f"Diagnosed ({verdict['severity']}): {verdict['summary'][:200]}", who="COO",
