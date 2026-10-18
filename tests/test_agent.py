@@ -88,6 +88,38 @@ class FakeMessages(http.server.BaseHTTPRequestHandler):
         pass
 
 
+class NotesMcp(http.server.BaseHTTPRequestHandler):
+    """An MCP server the owner connected themselves: one tool that reads, one that changes."""
+    calls: list = []
+
+    def do_POST(self):
+        m = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+        if "id" not in m:
+            self.send_response(202); self.end_headers()
+            return
+        if m["method"] == "initialize":
+            result = {"protocolVersion": m["params"].get("protocolVersion", "2025-06-18"), "capabilities": {"tools": {}},
+                      "serverInfo": {"name": "notes", "version": "1"}}
+        elif m["method"] == "tools/list":
+            schema = {"type": "object", "properties": {"text": {"type": "string"}}}
+            result = {"tools": [{"name": "list_notes", "description": "List notes", "inputSchema": schema, "annotations": {"readOnlyHint": True}},
+                                {"name": "add_note", "description": "Add a note", "inputSchema": schema}]}
+        elif m["method"] == "tools/call":
+            NotesMcp.calls.append(m["params"])
+            result = {"content": [{"type": "text", "text": "ok"}]}
+        else:
+            result = {}
+        data = json.dumps({"jsonrpc": "2.0", "id": m["id"], "result": result}).encode()
+        self.send_response(200); self.send_header("content-type", "application/json")
+        self.send_header("content-length", str(len(data))); self.end_headers(); self.wfile.write(data)
+
+    def do_GET(self):
+        self.send_response(405); self.end_headers()
+
+    def log_message(self, *a):
+        pass
+
+
 class AgentTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -244,6 +276,41 @@ class AgentTest(unittest.TestCase):
         self.assertEqual((wt / "flow.py").read_text(), "print(1)")  # allowed: written outside the folder
         self.assertFalse((self.root / "notes.md").exists())  # not allowed: refused
         self.assertIn("SYSTEM-MARK", json.dumps([s["body"].get("system") for s in FakeMessages.seen]))
+
+
+    @unittest.skipUnless(os.environ.get("OPENCODE_BIN") or shutil.which("opencode"), "OpenCode isn't installed")
+    def test_real_opencode_asks_the_owner_before_changes(self):
+        """With OpenCode too, a change in a service the owner connected waits for their OK (as with
+        Claude Code's --permission-prompt-tool): reads run, the change becomes a decision, and once
+        they allow it the same call goes through."""
+        notes = http.server.ThreadingHTTPServer(("127.0.0.1", 0), NotesMcp)
+        threading.Thread(target=notes.serve_forever, daemon=True).start()
+        try:
+            (self.root / ".cache/tools").mkdir(parents=True)
+            (self.root / ".cache/tools/connected.json").write_text(json.dumps({"notes": {
+                "name": "Notes", "url": f"http://127.0.0.1:{notes.server_address[1]}/mcp",
+                "readOnly": ["list_notes"], "destructive": []}}))
+            env = dict(STEERABLE_AGENT="opencode", ANTHROPIC_API_KEY="tok", ANTHROPIC_BASE_URL=self.api_url,
+                       OPENCODE_BIN=os.environ.get("OPENCODE_BIN") or shutil.which("opencode"), PATH=os.environ["PATH"])
+            NotesMcp.calls.clear()
+            turn = ("r = agent.run('TOOL:{tool}:{{\\\"text\\\":\\\"Call the baker\\\"}}', budget_usd='1', mcp='live',\n"
+                    "              permission_mode='default', burst=False, timeout=120)\n"
+                    "print(json.dumps([l for l in r.stdout.splitlines() if 'tool_result' in l]))")
+            read = self.py(turn.format(tool="notes_list_notes"), **env)
+            self.assertEqual([c["name"] for c in NotesMcp.calls], ["list_notes"])  # a read just runs
+            self.assertIn('"is_error": false', read[0])
+
+            held = self.py(turn.format(tool="notes_add_note"), **env)
+            self.assertIn("Waiting for the owner's OK: add note in Notes", held[0])
+            self.assertEqual([c["name"] for c in NotesMcp.calls], ["list_notes"])  # not run
+            pending = self.py("import approvals\nprint(json.dumps(approvals.pending()))")
+            self.assertEqual([(p["tool"], p["input"]) for p in pending], [("mcp__notes__add_note", {"text": "Call the baker"})])
+
+            self.py(f"import approvals\nprint(json.dumps(approvals.resolve({pending[0]['id']!r}, 'once')))")  # the owner allows it
+            self.py(turn.format(tool="notes_add_note"), **env)
+            self.assertEqual((NotesMcp.calls[-1]["name"], NotesMcp.calls[-1]["arguments"]), ("add_note", {"text": "Call the baker"}))
+        finally:
+            notes.shutdown()
 
 
 if __name__ == "__main__":

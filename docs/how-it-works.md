@@ -149,9 +149,10 @@ agent is written into the scripts that use it:
   (OpenCode; needs an API key or a gateway, not a Claude account; build the image with
   `--build-arg WITH_OPENCODE=1`). Permission rules are written once, in Claude Code's syntax, and
   translated for OpenCode; OpenCode's output is turned into Claude Code's, so results, the live
-  activity in the app and costs read the same. Known differences with OpenCode: no approvals from
-  chat for changes in connected services (they're refused instead), and the run's budget is
-  checked between steps rather than inside one.
+  activity in the app and costs read the same. Changes in the owner's services wait for their OK
+  either way: Claude Code asks `approvals.py` through `--permission-prompt-tool`, OpenCode through
+  a plugin (`scripts/opencode_approvals.js`) that checks each call before it runs. One difference:
+  with OpenCode the run's budget is checked between steps rather than inside one.
 
 ## Skills the COO learns
 

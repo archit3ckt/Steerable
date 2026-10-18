@@ -14,6 +14,8 @@ matches its grant. Steerable Cloud's connected services don't come here: its gat
 changes for the owner itself.
 
     Claude Code: --permission-prompt-tool mcp__approvals__ask   (integrations.claude_mcp_args)
+    OpenCode:    python scripts/approvals.py check mcp__<server>__<tool>  < input.json
+                 (from the plugin opencode_approvals.js, before each call to those servers)
 """
 import fcntl
 import hashlib
@@ -208,4 +210,11 @@ def serve() -> None:
 
 
 if __name__ == "__main__":
-    serve()
+    if len(sys.argv) == 3 and sys.argv[1] == "check":
+        # OpenCode's way in (opencode_approvals.js): the call's input on stdin, the answer printed.
+        try:
+            print(json.dumps(check(sys.argv[2], json.loads(sys.stdin.read() or "{}"))))
+        except Exception as e:  # noqa: BLE001
+            print(json.dumps({"behavior": "deny", "message": f"Couldn't check that: {e}"}))
+    else:
+        serve()

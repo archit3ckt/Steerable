@@ -21,7 +21,8 @@ The coding agent, STEERABLE_AGENT:
     claude     Claude Code (the default). Works with a Claude account or an API key / the gateway.
     opencode   OpenCode (needs an API key or the gateway; no Claude account). This file runs it
                itself and prints Claude Code's stream-json, so everything downstream (results,
-               the live activity in the app, cost) reads the same either way.
+               the live activity in the app, cost) reads the same either way. Changes in the
+               owner's services still wait for their OK (opencode_approvals.js).
 
 Permissions are written the Claude Code way ("Read(./**)", "Edit(//abs/path/**)", "Bash(git -C x *)",
 "mcp__server"); each agent translates them. What isn't allowed is refused: neither agent has anyone
@@ -363,33 +364,39 @@ def permissions(allow, deny, cwd: Path | str, add_dirs=()) -> dict:
     return perm
 
 
-def _mcp_servers(kind: str | None) -> dict:
-    """The company's MCP servers in OpenCode's form. The approvals server is Claude Code's own
-    (--permission-prompt-tool), so with OpenCode a change no rule allows is refused instead."""
+def _tool_prefix(server: str) -> str:
+    """How OpenCode starts the names of a server's tools (<prefix>_<tool>)."""
+    return re.sub(r"[^a-zA-Z0-9_-]", "_", server)
+
+
+def _mcp(kind: str | None) -> tuple[dict, list[str], dict]:
+    """The company's MCP servers for OpenCode: (servers in OpenCode's form, Claude Code allow
+    rules, servers whose calls go through approvals.py as {tool prefix: name there}).
+
+    Steerable Cloud's servers are allowed whole: its gateway holds changes for the owner. In the
+    chat ("live"), the owner's own servers go through approvals.py before each call, from the
+    plugin opencode_approvals.js, as Claude Code's do through --permission-prompt-tool: reads run,
+    changes wait in the owner's Decisions. In dry runs only their read tools are allowed."""
     if not kind:
-        return {}
+        return {}, [], {}
     import integrations
 
     found = integrations.mcp_config(dry_run=kind == "dry", approvals=False)
     if not found:
-        return {}
-    servers = json.loads(Path(found[0]).read_text()).get("mcpServers", {})
-    out = {}
-    for name, s in servers.items():
+        return {}, [], {}
+    rules = integrations.claude_mcp_args(dry_run=kind == "dry")[1]
+    servers, gated = {}, {}
+    for name, s in json.loads(Path(found[0]).read_text()).get("mcpServers", {}).items():
         if s.get("type") in ("http", "sse") or s.get("url"):
-            out[name] = {"type": "remote", "url": s["url"], "headers": s.get("headers") or {}, "enabled": True}
+            servers[name] = {"type": "remote", "url": s["url"], "headers": s.get("headers") or {}, "enabled": True}
         elif s.get("command"):
-            out[name] = {"type": "local", "command": [s["command"], *s.get("args", [])],
-                         "environment": s.get("env") or {}, "enabled": True}
-    return out
+            servers[name] = {"type": "local", "command": [s["command"], *s.get("args", [])],
+                             "environment": s.get("env") or {}, "enabled": True}
+        if kind == "live" and f"mcp__{name}" not in rules:
+            import tools
 
-
-def _mcp_rules(kind: str | None) -> list[str]:
-    if not kind:
-        return []
-    import integrations
-
-    return integrations.claude_mcp_args(dry_run=kind == "dry")[1]
+            gated[_tool_prefix(name)] = tools.slug(name)
+    return servers, rules, gated
 
 
 def _provider_model(name: str) -> tuple[str, str]:
@@ -416,11 +423,17 @@ def opencode_config(spec: dict) -> dict:
         "model": f"{provider}/{name}",
         "small_model": f"anthropic/{fast}" if provider == "anthropic" else f"{provider}/{name}",
         "provider": providers,
-        "permission": permissions(spec["allow"] + _mcp_rules(spec["mcp"]), spec["deny"], spec["cwd"], spec["add_dirs"]),
-        "mcp": _mcp_servers(spec["mcp"]),
         "autoupdate": False,
         "share": "disabled",
     }
+    servers, rules, gated = _mcp(spec["mcp"])
+    config["permission"] = permissions(spec["allow"] + rules, spec["deny"], spec["cwd"], spec["add_dirs"])
+    config["mcp"] = servers
+    if gated:  # offered, and checked before each call by the plugin
+        for prefix in gated:
+            config["permission"][f"{prefix}_*"] = "allow"
+        config["plugin"] = [(Path(__file__).resolve().parent / "opencode_approvals.js").as_uri()]
+        config["_approvals"] = gated  # taken out again by run_opencode, into the plugin's environment
     return config
 
 
@@ -475,8 +488,11 @@ def run_opencode(spec_path: str) -> int:
     def emit(event: dict) -> None:
         print(json.dumps(event), flush=True)
 
+    approvals = config.pop("_approvals", None)
+    extra = {"STEERABLE_APPROVAL_SERVERS": json.dumps(approvals), "STEERABLE_PYTHON": sys.executable,
+             "STEERABLE_ROOT": str(ROOT)} if approvals else {}
     proc = subprocess.Popen(cmd, cwd=spec["cwd"], stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, text=True,
-                            env={**os.environ, "OPENCODE_CONFIG_CONTENT": json.dumps(config), "PWD": spec["cwd"]},
+                            env={**os.environ, **extra, "OPENCODE_CONFIG_CONTENT": json.dumps(config), "PWD": spec["cwd"]},
                             preexec_fn=_die_with_parent)
     try:
         for line in proc.stdout:
