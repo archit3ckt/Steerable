@@ -66,12 +66,38 @@ services:
       COO_NAME: ${COO_NAME:-Juno}
       OWNER_NAME: ${OWNER_NAME:-}
       TZ: ${TZ:-UTC}
+      # Spaces: the service that makes and removes them (below), and the list it keeps in /shared.
+      SPACES_URL: http://spaces:8790
+      SPACES_TOKEN: ${SPACES_TOKEN:-}
     volumes:
       - shared:/shared:ro
+    networks: [default, control]
     ports:
       # Only this machine by default. To open it to your network: DASHBOARD_BIND=0.0.0.0
       - ${DASHBOARD_BIND:-127.0.0.1}:${DASHBOARD_PORT:-3100}:3100
 
+  # More businesses or projects, each with its own COO (New space, in the dashboard). Each space is
+  # another engine container, made from the one above with its own data. This is the only part
+  # with Docker access, and it does only that; only the dashboard can reach it (the control
+  # network, and SPACES_TOKEN, which get.sh makes). See container/spaces.py.
+  spaces:
+    image: ${STEERABLE_ENGINE_IMAGE:-ghcr.io/archit3ckt/steerable-engine:latest}
+    restart: unless-stopped
+    depends_on: [engine]
+    user: "0"
+    entrypoint: ["tini", "--", "python", "/opt/steerable/spaces.py"]
+    stop_grace_period: 60s
+    environment:
+      SPACES_TOKEN: ${SPACES_TOKEN:-}
+    volumes:
+      - ${DOCKER_SOCKET:-/var/run/docker.sock}:/var/run/docker.sock
+      - shared:/shared
+    networks: [control]
+
+networks:
+  control:
+    internal: true   # the dashboard and the spaces service only: no COO, no internet
+
 volumes:
   company:   # your company folder: memory, routines, tasks, history, the Claude session
-  shared:    # the engine's token for the dashboard
+  shared:    # the engines' tokens for the dashboard, and the list of spaces

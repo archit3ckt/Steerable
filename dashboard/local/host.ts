@@ -1,5 +1,6 @@
 import "server-only";
 import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { connection } from "next/server";
@@ -13,8 +14,9 @@ import { COOKIE, validSession } from "./auth";
  * The dashboard's host when you run it yourself: your companies' engines (start one with
  * `.venv/bin/python scripts/agent_api.py` in a company folder), configured in .env.local, or by
  * docker compose. One space by default (COMPANY_NAME, AGENT_API_URL); more are separate engines,
- * each with its own folder, memory and connections, listed in STEERABLE_SPACES (get.sh
- * --add-space writes it). The owner switches between them; the one they're in is a cookie.
+ * each with its own folder, memory and connections, made from the dashboard (New space) by the
+ * spaces service (container/spaces.py), which lists them in spaces.json in the shared folder. The
+ * owner switches between them; the one they're in is a cookie.
  */
 
 export type Space = {
@@ -30,7 +32,10 @@ export type Space = {
 
 export const SPACE_COOKIE = "steerable_space";
 
-/** Every space: the first from COMPANY_NAME / AGENT_API_*, then STEERABLE_SPACES (JSON). */
+/** The shared folder the engines write their tokens to (docker compose: /shared). */
+const sharedDir = () => dirname(process.env.AGENT_API_TOKEN_FILE || "/shared/agent-token");
+
+/** Every space: the first from COMPANY_NAME / AGENT_API_*, then the spaces service's list. */
 export function spaces(): Space[] {
   const first: Space = {
     id: "main",
@@ -42,14 +47,20 @@ export function spaces(): Space[] {
   };
   let more: Space[] = [];
   try {
-    const parsed = JSON.parse(process.env.STEERABLE_SPACES || "[]");
+    const parsed = JSON.parse(readFileSync(join(sharedDir(), "spaces.json"), "utf8")).spaces;
     if (Array.isArray(parsed)) {
       more = parsed
-        .filter((s) => s && typeof s.id === "string" && /^[a-z0-9-]{1,30}$/.test(s.id) && s.id !== "main" && typeof s.url === "string")
-        .map((s) => ({ id: s.id, name: String(s.name || s.id), cooName: String(s.cooName || "Juno"), url: s.url, token: s.token, tokenFile: s.tokenFile }));
+        .filter((s) => s && typeof s.id === "string" && /^s\d{1,3}$/.test(s.id))
+        .map((s) => ({
+          id: s.id,
+          name: String(s.name || s.id),
+          cooName: String(s.cooName || "Juno"),
+          url: `http://engine-${s.id}:8787`,
+          tokenFile: join(sharedDir(), s.id, "agent-token"),
+        }));
     }
   } catch {
-    // a broken list: just the first space
+    // no list yet (or no spaces service): just the first space
   }
   return [first, ...more];
 }

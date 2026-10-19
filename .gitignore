@@ -5,6 +5,3 @@ __pycache__/
 # Local, per-machine additions to docker-compose.yml (Compose reads this automatically; never ship one)
 docker-compose.override.yml
 
-# Your extra spaces (get.sh --add-space writes them; per machine)
-spaces.list
-spaces.yml

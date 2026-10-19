@@ -33,9 +33,9 @@ export function SpaceSwitcher({ current, spaces, children }: { current: string; 
             </li>
           ))}
           <li className="mt-1 border-t border-line pt-1">
-            <Link href="/spaces/new" className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-ink-2 transition-colors hover:bg-surface-2 hover:text-ink">
+            <Link href="/spaces" className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-ink-2 transition-colors hover:bg-surface-2 hover:text-ink">
               <Plus className="size-4" />
-              New space
+              New space or manage
             </Link>
           </li>
         </ul>

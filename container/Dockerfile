@@ -32,6 +32,7 @@ RUN /opt/venv/bin/python -m playwright install --with-deps --no-shell chromium \
 
 COPY template /opt/steerable/template
 COPY container/entrypoint.py /opt/steerable/entrypoint.py
+COPY container/spaces.py /opt/steerable/spaces.py
 # Which engine this image ships (companies update to it on start). Build with
 #   --build-arg ENGINE_VERSION=$(git rev-parse --short HEAD)
 ARG ENGINE_VERSION=dev
