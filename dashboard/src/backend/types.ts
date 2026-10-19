@@ -472,6 +472,12 @@ export type RoutineDetail = Routine & {
   flow: FlowStep[] | null;
   /** The COO is writing its steps down now. */
   flowPending: boolean;
+  /** Its code, for the code view (a toggle on the steps). */
+  code?: string;
+  /** For each step in flow, the [first, last] line ranges of code that do it; null until worked out. */
+  codeMap?: [number, number][][] | null;
+  /** Which lines do each step is being worked out now. */
+  codeMapPending?: boolean;
   /** Newest first. */
   runs: RoutineRun[];
   /** It's being set up (built) right now: what the COO has done so far, in plain words. */

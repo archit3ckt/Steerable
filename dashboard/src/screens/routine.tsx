@@ -5,7 +5,7 @@ import { ArrowLeft, Check, Eye } from "lucide-react";
 import type { DashboardHost } from "../host";
 import { ago } from "../format";
 import { Poll } from "../poll";
-import { FlowChart } from "../routine-flow";
+import { HowItWorks } from "../routine-code";
 import { RoutineSwitch, RunNow, StageSteps, WatchToggle } from "../work-bits";
 import { RunChanges } from "../run-changes";
 import { TraceViewer } from "../trace-viewer";
@@ -226,7 +226,7 @@ async function Routine({
       <section>
         <SectionHeader title="How it works" />
         {r.flow ? (
-          <FlowChart steps={r.flow} current={r.runningNow?.step ?? null} />
+          <HowItWorks steps={r.flow} current={r.runningNow?.step ?? null} code={r.code} codeMap={r.codeMap} codeMapPending={r.codeMapPending} />
         ) : r.flowPending ? (
           <Card className="p-6">
             <Poll seconds={4} />

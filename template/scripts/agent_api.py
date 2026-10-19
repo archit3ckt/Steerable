@@ -20,7 +20,7 @@ Every request except GET /health needs `Authorization: Bearer <AGENT_API_TOKEN>`
     POST /v1/decisions/<id>            {"optionId": "...", "note"?: "..."}  (note: the owner's words, for options that ask for them)
     GET  /v1/timeline?limit=50         what happened, newest first
     GET  /v1/routines                  workflows, as routines
-    GET  /v1/routines/<id>             one, with its steps (flow chart) and recent runs
+    GET  /v1/routines/<id>             one, with its steps (flow chart), its code and which lines do each step, and recent runs
     POST /v1/routines/<id>/paused      {"paused": true|false}
     POST /v1/routines/<id>/run         run it once now ("Run now"); the schedule stays as it was
     POST /v1/routines/<id>/watch       {"watch": true|false}  check what it can't undo before each run does it (supervise.py), or stop
@@ -1088,6 +1088,22 @@ def routine_detail(rid: str) -> dict:
         threading.Thread(target=work, daemon=True).start()
     out = {**routine, "flow": steps, "flowPending": steps is None and (rid in _describing or flow.pending(rid)),
            "runs": runs[::-1][:20]}
+    # The code view (a toggle on the steps): the routine's code, and which lines do each step,
+    # worked out once in the background (and again when the code changes).
+    code = flow.code_of(rid)
+    if steps and code is not None:
+        out["code"] = "\n".join(code.splitlines()[:flow.MAX_LINES])
+        out["codeMap"] = flow.code_map(rid)
+        if out["codeMap"] is None and not flow.map_pending(rid) and f"{rid}.map" not in _describing:
+            _describing.add(f"{rid}.map")
+
+            def mark():
+                try:
+                    flow.map_code(rid)
+                finally:
+                    _describing.discard(f"{rid}.map")
+            threading.Thread(target=mark, daemon=True).start()
+        out["codeMapPending"] = out["codeMap"] is None and (f"{rid}.map" in _describing or flow.map_pending(rid))
     b = builder.current(rid)
     if b and b["status"] == "ready" and b.get("trace"):
         out["ready"] = {"trace": b["trace"], "decision": f"build:{b['id']}", **({"change": b["change"]} if b.get("change") else {})}

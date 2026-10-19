@@ -3,14 +3,15 @@ import type { FlowStep } from "./backend/types";
 import { KeepInView } from "./keep-in-view";
 import { cx } from "./ui";
 
-const KIND: Record<FlowStep["kind"], { Icon: LucideIcon; tone: string; name: string }> = {
-  trigger: { Icon: Clock, tone: "bg-violet-soft text-violet", name: "When" },
-  read: { Icon: Download, tone: "bg-sky-soft text-sky", name: "Reads" },
-  think: { Icon: Brain, tone: "bg-amber-soft text-amber", name: "Works out" },
-  write: { Icon: PenLine, tone: "bg-accent-soft text-accent", name: "Writes" },
-  ask: { Icon: Hand, tone: "bg-rose-soft text-rose", name: "Asks you" },
-  send: { Icon: Send, tone: "bg-accent-soft text-accent", name: "Sends" },
-  save: { Icon: Archive, tone: "bg-surface-2 text-ink-2", name: "Keeps" },
+/** Each kind of step: its icon, its colors (the same in the flow chart and the code view), its name. */
+export const KIND: Record<FlowStep["kind"], { Icon: LucideIcon; tone: string; line: string; name: string }> = {
+  trigger: { Icon: Clock, tone: "bg-violet-soft text-violet", line: "bg-violet-soft/60 border-violet", name: "When" },
+  read: { Icon: Download, tone: "bg-sky-soft text-sky", line: "bg-sky-soft/60 border-sky", name: "Reads" },
+  think: { Icon: Brain, tone: "bg-amber-soft text-amber", line: "bg-amber-soft/60 border-amber", name: "Works out" },
+  write: { Icon: PenLine, tone: "bg-accent-soft text-accent", line: "bg-accent-soft/60 border-accent", name: "Writes" },
+  ask: { Icon: Hand, tone: "bg-rose-soft text-rose", line: "bg-rose-soft/60 border-rose", name: "Asks you" },
+  send: { Icon: Send, tone: "bg-accent-soft text-accent", line: "bg-accent-soft/60 border-accent", name: "Sends" },
+  save: { Icon: Archive, tone: "bg-surface-2 text-ink-2", line: "bg-surface-2 border-ink-3", name: "Keeps" },
 };
 
 /**
@@ -18,7 +19,19 @@ const KIND: Record<FlowStep["kind"], { Icon: LucideIcon; tone: string; name: str
  * on a dotted board (top to bottom on a phone). Read-only: the COO writes the steps.
  * While it runs, `current` is the step it's on: highlighted, with the ones before it ticked.
  */
-export function FlowChart({ steps, current = null }: { steps: FlowStep[]; current?: number | null }) {
+export function FlowChart({
+  steps,
+  current = null,
+  numbered = false,
+  onSelect,
+}: {
+  steps: FlowStep[];
+  current?: number | null;
+  /** Number the steps (they match the numbers in the code view). */
+  numbered?: boolean;
+  /** Clicking a step (its code, in the code view). */
+  onSelect?: (step: number) => void;
+}) {
   return (
     <div className="overflow-x-auto rounded-2xl border border-line bg-surface-2/50 [background-image:radial-gradient(var(--line)_1px,transparent_1px)] [background-size:18px_18px]">
       <ol className="flex flex-col items-stretch gap-0 p-6 sm:w-max sm:flex-row sm:items-center sm:p-10">
@@ -35,8 +48,13 @@ export function FlowChart({ steps, current = null }: { steps: FlowStep[]; curren
                 </span>
               )}
               <div
+                onClick={onSelect ? () => onSelect(n) : undefined}
+                role={onSelect ? "button" : undefined}
+                tabIndex={onSelect ? 0 : undefined}
+                onKeyDown={onSelect ? (e) => (e.key === "Enter" || e.key === " ") && onSelect(n) : undefined}
                 className={cx(
                   "relative w-full rounded-2xl border bg-surface p-4 shadow-card transition-shadow sm:w-48",
+                  onSelect && "cursor-pointer hover:shadow-lift",
                   s.kind === "trigger" ? "border-violet/40 sm:rounded-l-[2rem]" : "border-line",
                   now && "border-accent ring-4 ring-accent/20",
                   current !== null && !now && !done && "opacity-60",
@@ -60,7 +78,10 @@ export function FlowChart({ steps, current = null }: { steps: FlowStep[]; curren
                     <Icon className="size-5" />
                   </span>
                   <div className="min-w-0">
-                    <p className="text-[11px] font-medium tracking-wide text-ink-3 uppercase">{name}</p>
+                    <p className="text-[11px] font-medium tracking-wide text-ink-3 uppercase">
+                      {numbered && <span className="mr-1 tabular-nums">{n + 1} ·</span>}
+                      {name}
+                    </p>
                     <p className="text-sm leading-snug font-medium">{s.label}</p>
                     {s.service && <p className="mt-1 text-xs text-ink-3">{s.service}</p>}
                   </div>
