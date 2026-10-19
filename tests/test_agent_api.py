@@ -358,7 +358,8 @@ class AgentApiTest(unittest.TestCase):
         self.assertEqual(problem["title"], "The inbox password changed, so the routine can't log in")
         self.assertIn("Two customers are waiting.", problem["context"])
         self.assertIn("I've paused Answer common customer questions", problem["context"])
-        self.assertIn("I've prepared a fix: Reads the new password from .env. I've paused", problem["context"])
+        self.assertIn("I've prepared a fix", problem["context"])
+        self.assertNotIn(".env", problem["context"])  # the owner hears what it means, never how it's done
         self.assertEqual([o["id"] for o in problem["options"]], ["apply", "action-0", "discard"])
         self.assertEqual(problem["recommendation"]["optionId"], "apply")
         self.assertEqual(problem["draft"]["body"], "Hi Dana, sorry for the wait...")
@@ -703,7 +704,7 @@ class AgentApiTest(unittest.TestCase):
             return next((d for d in self.call("GET", "/v1/decisions")[1] if d["id"].startswith("build:")), None)
         d = self.wait_for(build_decision)
         self.assertEqual(d["title"], "Chase unpaid invoices needs something from you")
-        self.assertIn("What I need from you: a login for your invoicing tool.", d["context"])
+        self.assertIn("I need a login for your invoicing tool. Then I'll pick it up from there.", d["context"])
         self.assertFalse((self.root / "workflows/invoices_needs_login.py").exists())  # nothing half-built
         self.assertPlain(d)
         # Try again: a fresh attempt, which needs the owner again.
@@ -719,14 +720,25 @@ class AgentApiTest(unittest.TestCase):
                         "--every", "weekly", "--saves", "1"], cwd=self.root, check=True, capture_output=True)
         task = next(d for d in self.call("GET", "/v1/decisions")[1] if d["title"] == "Weekly email")
         self.call("POST", f"/v1/decisions/{task['id']}", {"optionId": "approve"})
-        d = self.wait_for(lambda: next((x for x in self.call("GET", "/v1/decisions")[1]
-                                        if x["id"].startswith("build:") and "Weekly email" in x["title"]), None))
-        self.assertIn("keeps its data in ways the engine doesn't allow", d["context"])
+        builds = lambda: json.loads((self.root / ".cache/builds.json").read_text()).values()  # noqa: E731
+        failed = self.wait_for(lambda: next((b for b in builds() if b["workflow"] == "weekly_messy" and b["status"] == "failed"), None))
         self.assertFalse((self.root / "workflows/weekly_messy.py").exists())  # never merged
         runs = (self.root / "logs/runs.jsonl").read_text()
         self.assertIn('"status": "standards"', runs)
         self.assertIn("write_text", runs)
-        self.call("POST", f"/v1/decisions/{d['id']}", {"optionId": "drop"})
+        # It's the system's to fix, not the owner's: no decision, no "couldn't build" in the timeline,
+        # and it's still being set up (it's tried again on its own, a while later).
+        self.assertFalse(any("Weekly email" in x["title"] for x in self.call("GET", "/v1/decisions")[1]))
+        self.assertFalse(any("Weekly email" in e["title"] and "uild" in e["title"] for e in self.call("GET", "/v1/timeline?limit=20")[1]
+                             if e["title"].startswith(("Couldn't", "I couldn't"))))
+        self.assertEqual(failed["attempt"] if "attempt" in failed else 1, 1)
+        self.assertTrue(failed.get("version") is not None)
+        retried = subprocess.run([sys.executable, "-c", "import sys, json; sys.path.insert(0, 'scripts'); import builder; print(json.dumps(builder.retry_failed()))"],
+                                 cwd=self.root, capture_output=True, text=True)
+        self.assertEqual(json.loads(retried.stdout.strip().splitlines()[-1]), [])  # not yet: it waits a while first
+        b = next(b for b in builds() if b["workflow"] == "weekly_messy")
+        subprocess.run([sys.executable, "-c", f"import sys; sys.path.insert(0, 'scripts'); import builder; builder.drop({b['id']!r})"],
+                       cwd=self.root, capture_output=True)
 
     def test_16c_change_a_running_routine(self):
         out = subprocess.run([sys.executable, "scripts/change.py", "reorder_reminders", "Tell me about new reorders in the chat",
@@ -802,7 +814,8 @@ except IntegrationError as e:
         self.assertEqual(lines[0][0]["provider"], "stripe")
         self.assertEqual(lines[3], {"error": "Google isn't connected. The owner can connect it in Connections.",
                                     "connect": "google", "status": 409})
-        get, post = FakeGateway.calls[1], FakeGateway.calls[2]
+        # Service calls only (the app's background work may be asking the model meanwhile).
+        _, get, post = [c for c in FakeGateway.calls if c["path"].startswith("/x")][:3]
         self.assertEqual(get["path"], "/x/stripe/api.stripe.com/v1/invoices?status=open")
         self.assertEqual(get["headers"]["Authorization"], "Bearer sk-steerable-test-token")
         self.assertEqual(get["headers"]["X-Steerable-Dry-Run"], "1")
@@ -904,7 +917,7 @@ mcp_call("notion", "search", {})
         self.assertIn(".steerable-worktrees/builds", argv[argv.index("--add-dir") + 1])
         self.assertNotIn(".cache", argv[argv.index("--add-dir") + 1])  # agents are denied .cache folders
         self.assertIn("mcp__stripe", argv[argv.index("--allowedTools"):argv.index("--disallowedTools")])
-        self.assertEqual(d["recommendation"]["why"], "Connect Google, then try again and I'll pick it up from there.")
+        self.assertEqual(d["recommendation"]["why"], "Connect Google, then I'll carry on.")
         self.assertPlain(d)
 
     def test_09b_approving_a_routine_finishes_onboarding(self):

@@ -121,6 +121,7 @@ from urllib.parse import parse_qs, quote, unquote, urlparse
 import accounts
 import ai_access
 import approvals
+import owner_words
 import bridge
 import browser
 import builder
@@ -295,10 +296,11 @@ PLAIN_WORDS = [(r"\bworkflows\b", "routines"), (r"\bworkflow\b", "routine"),
 
 
 def plain(text: str) -> str:
-    """Swap the engine's words for the owner's, in text written for the CEO."""
+    """Text written for the CEO, in the owner's words: the engine's terms swapped, and anything
+    technical rewritten in plain words (owner_words.py: the owner hears the big picture only)."""
     for pattern, word in PLAIN_WORDS:
-        text = re.sub(pattern, word, text, flags=re.IGNORECASE)
-    return text
+        text = re.sub(pattern, word, text or "", flags=re.IGNORECASE)
+    return owner_words.say(text)
 
 
 def sentence(text: str) -> str:
@@ -355,7 +357,7 @@ def incident_decision(inc: dict, names: dict[str, str]) -> dict:
     done = set(inc.get("done_actions", []))
     for n, action in enumerate(v.get("actions", [])):
         if n not in done:
-            options.append({"id": f"action-{n}", "label": action["label"][:80],
+            options.append({"id": f"action-{n}", "label": plain(action["label"])[:80],
                             "tone": "neutral" if options else "primary"})
     if v.get("fix_ready"):
         options.append({"id": "discard", "label": "Don't apply it", "tone": "quiet",
@@ -518,27 +520,25 @@ def account_decision(a: dict) -> dict:
 
 
 def build_decision(b: dict) -> dict:
-    needs_owner = b["status"] == "needs_owner"
+    """A routine being set up that needs something only the owner can give (a connected service, a
+    login, an answer). Just that, in plain words: how it's being built is the system's business."""
     ask = connection_ask(b.get("needs_connection"))
-    context = [sentence(plain(b.get("summary") or ""))]
-    if needs_owner and b.get("needs"):
-        context.append(sentence(f"What I need from you: {plain(b['needs'])}"))
     changing = bool(b.get("change"))
-    context.append("It keeps running as it was." if changing else "Nothing runs until it works.")
+    if ask:
+        context = f"To {'update' if changing else 'set up'} {b['title']}, {ask['label'][:1].lower()}{ask['label'][1:]} (one tap, above)."
+    else:
+        context = sentence(f"To {'update' if changing else 'set up'} {b['title']}, I need {plain(b.get('needs') or 'a word with you')}")
+    context += " Then I'll pick it up from there." + (" It keeps running as it was meanwhile." if changing else "")
     decision = {
         "id": f"build:{b['id']}",
         "kind": "problem",
         "urgent": False,
-        "title": (f"{b['title']} needs {needs_what(ask)}" if ask
-                  else f"{b['title']} needs something from you" if needs_owner
-                  else f"I couldn't finish updating {b['title']}" if changing
-                  else f"I couldn't finish building {b['title']}"),
-        "context": " ".join(c for c in context if c),
-        "recommendation": {"optionId": "retry",
-                           "why": "Once you've sorted that, I'll pick it up from there." if needs_owner else "Another attempt often works."},
+        "title": f"{b['title']} needs {needs_what(ask)}" if ask else f"{b['title']} needs something from you",
+        "context": context,
+        "recommendation": {"optionId": "retry", "why": f"{ask['label']}, then I'll carry on." if ask else "Once that's sorted, I'll carry on."},
         "options": [
-            {"id": "retry", "label": "Try again", "tone": "primary", "outcome": "I'll build and test it again"},
-            {"id": "drop", "label": "Keep it as it was" if changing else "Don't build it", "tone": "quiet",
+            {"id": "retry", "label": "Done, carry on", "tone": "primary", "outcome": "I'll finish setting it up"},
+            {"id": "drop", "label": "Keep it as it was" if changing else "Don't set it up", "tone": "quiet",
              "outcome": "It keeps running as it is" if changing else "It's taken off your list"},
         ],
         "facts": [],
@@ -546,7 +546,6 @@ def build_decision(b: dict) -> dict:
     }
     if ask:
         decision["connect"] = ask
-        decision["recommendation"]["why"] = f"{ask['label']}, then try again and I'll pick it up from there."
     return decision
 
 
@@ -750,7 +749,9 @@ def decisions() -> list[dict]:
         out += [account_decision(a) for a in accounts.listing() if a["status"] == "PROPOSED"]
     covered = {i.get("workflow") for i in awaiting}
     for b in builder.load().values():
-        if b["status"] in ("needs_owner", "failed"):
+        # Only what the owner can do something about: a build that failed is the system's (it tries
+        # again on its own, builder.retry_failed), so it never reaches them.
+        if b["status"] == "needs_owner":
             out.append(build_decision(b))
             covered.add(b["workflow"])
         elif b["status"] == "ready":
@@ -1611,8 +1612,8 @@ def status() -> dict:
 
     # New routines being built after the owner approved them.
     builds = sorted(builder.load().values(), key=lambda b: b.get("finished") or b.get("opened") or "")
-    building = [b["title"] for b in builds if b["status"] == "building"]
-    stuck = [b["title"] for b in builds if b["status"] in ("needs_owner", "failed")]
+    building = [b["title"] for b in builds if b["status"] in ("building", "failed")]  # failed: trying again on its own
+    stuck = [b["title"] for b in builds if b["status"] == "needs_owner"]
     ready = [b["title"] for b in builds if b["status"] == "ready"]
     if building:
         state, summary = "working", f"Setting up {_quoted(building)}"

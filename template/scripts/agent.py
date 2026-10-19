@@ -180,6 +180,23 @@ def run(prompt: str, *, budget_usd: str | float, tier: str = "smart", allow=(), 
     return result
 
 
+def claude_rules(rules) -> list[str]:
+    """Allow rules as Claude Code checks them: it checks each part of a chained command on its own
+    (since 2.1), so "Bash(cd /wt && .venv/bin/python *)" no longer matches anything. Each such rule
+    also allows its parts ("Bash(.venv/bin/python *)"); a leading `cd dir` is Claude Code's own to
+    allow (it's within the folders the run may use)."""
+    out = []
+    for rule in rules:
+        out.append(rule)
+        m = re.fullmatch(r"Bash\((.*)\)", rule, re.S)
+        if not m or not re.search(r"&&|\|\||;", m.group(1)):
+            continue
+        for part in re.split(r"\s*(?:&&|\|\||;)\s*", m.group(1)):
+            if part and not re.fullmatch(r"cd \S+", part) and f"Bash({part})" not in out:
+                out.append(f"Bash({part})")
+    return out
+
+
 def _claude_command(spec: dict, prompt_on_stdin: bool = False) -> list[str]:
     cmd = ["claude", "-p", *([] if prompt_on_stdin else [spec["prompt"]])]
     cmd += ["--output-format", "stream-json", "--verbose"] if spec["live"] else ["--output-format", "json"]
@@ -201,7 +218,7 @@ def _claude_command(spec: dict, prompt_on_stdin: bool = False) -> list[str]:
     if spec["max_turns"]:
         cmd += ["--max-turns", str(spec["max_turns"])]
     if spec["allow"] or mcp_rules:
-        cmd += ["--allowedTools", *mcp_rules, *spec["allow"]]
+        cmd += ["--allowedTools", *mcp_rules, *claude_rules(spec["allow"])]
     if spec["deny"]:
         cmd += ["--disallowedTools", *spec["deny"]]
     if spec["resume"]:

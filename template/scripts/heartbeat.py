@@ -187,6 +187,7 @@ def main(dry_run: bool) -> int:
         catch_up_brief()
         adopt_system_tasks()
         builder.recover_stale()  # background work a restart killed: never "working on it" forever
+        builder.retry_failed()  # failed builds are the system's: tried again on their own, never the owner's
         incident.recover_stale()
     lines = TASKS.read_text().splitlines()
     ready, waiting, unbuilt = runnable_tasks(lines)

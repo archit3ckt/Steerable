@@ -19,6 +19,7 @@ incident starts a fix:
     python scripts/builder.py list
 """
 import fcntl
+from datetime import datetime, timezone
 import json
 from contextlib import contextmanager
 import os
@@ -31,6 +32,7 @@ import agent
 import burst
 import flow
 import integrations
+import owner_words
 import routine_check
 import runtrace
 import supervise
@@ -79,6 +81,9 @@ def _state():
 
 
 def update(bid: str, **fields) -> dict:
+    if fields.get("status") == "failed":  # when, and on which engine: retry_failed goes by them
+        fields.setdefault("finished", now_iso())
+        fields.setdefault("version", _engine_version())
     with _state() as s:
         s[bid].update(fields)
         return dict(s[bid])
@@ -170,11 +175,52 @@ def recover_stale() -> list[str]:
                + (" It keeps running as it was." if changing else ""))
         live_path(b["id"]).unlink(missing_ok=True)
         git("worktree", "remove", "--force", str(WORKTREES / b["id"]), check_=False)
-        record_event(f"Was interrupted while {'updating' if changing else 'building'} {b['title']}.", who="COO", workflow=b["workflow"])
         done.append(f"{b['id']}: interrupted")
     if done:
         log_run("builder", "recovered", items=done)
     return done
+
+
+# A build that failed is the system's to sort out, never the owner's: it's tried again on its own,
+# waiting longer each time (minutes after each failure). After the last, it waits for a new version
+# of the engine (an update may well fix it) and tells whoever runs Steerable, once.
+RETRY_AFTER = (10, 30, 120, 480)
+
+
+def _engine_version() -> str:
+    path = Path(os.environ.get("STEERABLE_VERSION_FILE", "/opt/steerable/VERSION"))
+    return path.read_text().strip() if path.exists() else ""
+
+
+def retry_failed() -> list[str]:
+    """Start failed builds again when it's their time (the heartbeat calls this). Returns what it started."""
+    started = []
+    now = datetime.now(timezone.utc)
+    for b in list(load().values()):
+        if b["status"] != "failed":
+            continue
+        attempt = int(b.get("attempt") or 1)
+        if attempt > len(RETRY_AFTER):
+            if b.get("version") == _engine_version():
+                if not b.get("reported"):
+                    update(b["id"], reported=True)
+                    burst.report_problem("build_failed", b["workflow"], (b.get("summary") or "")[-600:])
+                continue
+            attempt = 0  # a new engine since: a fresh round of tries
+        try:
+            ended = datetime.fromisoformat(b.get("finished") or b["opened"])
+        except ValueError:
+            ended = now
+        wait = RETRY_AFTER[min(attempt, len(RETRY_AFTER)) - 1] if attempt else 0
+        if (now - ended).total_seconds() < wait * 60:
+            continue
+        update(b["id"], status="retried")
+        new = _open(b["workflow"], b["task"], exists=bool(b.get("change")), change=b.get("change"),
+                    feedback=b.get("feedback"), attempt=attempt + 1)
+        if new:
+            started.append(new)
+            log_run("builder", "retry", build=new, workflow=b["workflow"], attempt=attempt + 1)
+    return started
 
 
 def ensure_builds(approved: list[tuple[str, str]]) -> None:
@@ -406,7 +452,6 @@ def build(bid: str) -> None:
         _cleanup(bid, name)
         update(bid, status="failed", summary="Something went wrong while I was building it.", needs="",
                error=out.error)
-        record_event(f"Couldn't build {b['title']}.", who="COO", workflow=name, status="Blocked")
         return
 
     cost = out.cost
@@ -427,7 +472,7 @@ def build(bid: str) -> None:
         result["summary"] = ("It works, but it keeps its data in ways the engine doesn't allow, so I didn't switch it on. "
                              "Try again and I'll fix that.")
         log_run("builder", "standards", build=bid, workflow=name, problems=problems)
-    fields = {"summary": result.get("summary", ""), "needs": result.get("needs", ""),
+    fields = {"summary": result.get("summary", ""), "needs": owner_words.say(result.get("needs", ""), wait=True),
               "needs_connection": result.get("needs_connection", "") if result["status"] == "needs_owner" else "",
               "test_output": result.get("test_output", "")[-1500:], "cost_usd": cost}
 
@@ -453,12 +498,8 @@ def build(bid: str) -> None:
     log_run("builder", status, cost_usd=cost, build=bid, workflow=name)
     changing = bool(b.get("change"))
     if status == "ready":
-        record_event(f"{'Updated' if changing else 'Built'} {b['title']} and tried it in a practice run. {fields['summary']}",
+        record_event(f"{'Updated' if changing else 'Built'} {b['title']} and tried it in a practice run. {owner_words.say(fields['summary'], wait=True)}",
                      who="COO", workflow=name, cost=cost)
-    elif changing:
-        record_event(f"Couldn't finish updating {b['title']}; it keeps running as it was.", who="COO", workflow=name, cost=cost)
-    else:
-        record_event(f"Couldn't finish building {b['title']}.", who="COO", workflow=name, cost=cost, status="Blocked")
 
 
 # What a build's worktree shares with the company, for its tests: settings and Python (.env, .venv, both
