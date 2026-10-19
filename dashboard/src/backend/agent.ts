@@ -19,6 +19,8 @@ import type {
   Company,
   CompanyBackend,
   Decision,
+  Preferences,
+  SettledDecision,
   Goal,
   Onboarding,
   Overview,
@@ -124,6 +126,12 @@ export function agentBackend({ url, token, company }: { url: string; token: stri
       return { ...o, company };
     },
     decisions: () => call<Decision[]>("GET", "/v1/decisions"),
+    settledDecisions: () => call<SettledDecision[]>("GET", "/v1/decisions/settled"),
+    async undoSettled(settledId) {
+      await call("POST", `/v1/decisions/settled/${id(settledId)}/undo`, {}, WRITE_TIMEOUT_MS);
+    },
+    preferences: () => call<Preferences>("GET", "/v1/preferences"),
+    setPreferences: (changes) => call<Preferences>("POST", "/v1/preferences", changes, WRITE_TIMEOUT_MS),
     decide: (decisionId, optionId, note) =>
       call<TimelineEvent>("POST", `/v1/decisions/${id(decisionId)}`, note ? { optionId, note } : { optionId }, WRITE_TIMEOUT_MS),
     timeline: (limit = 50) => call<TimelineEvent[]>("GET", `/v1/timeline?limit=${limit}`),

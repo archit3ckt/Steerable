@@ -18,6 +18,10 @@ Every request except GET /health needs `Authorization: Bearer <AGENT_API_TOKEN>`
     GET  /v1/overview                  health, brief, spend, stats
     GET  /v1/decisions                 everything waiting on the owner
     POST /v1/decisions/<id>            {"optionId": "...", "note"?: "..."}  (note: the owner's words, for options that ask for them)
+    GET  /v1/decisions/settled         small decisions settled for the owner this week (small_decisions.py)
+    POST /v1/decisions/settled/<id>/undo   take one back: it returns to their decisions
+    GET  /v1/preferences               {"decideSmall": bool}
+    POST /v1/preferences               {"decideSmall": bool}
     GET  /v1/timeline?limit=50         what happened, newest first
     GET  /v1/routines                  workflows, as routines
     GET  /v1/routines/<id>             one, with its steps (flow chart), its code and which lines do each step, and recent runs
@@ -122,6 +126,7 @@ import accounts
 import ai_access
 import approvals
 import owner_words
+import small_decisions
 import bridge
 import browser
 import builder
@@ -906,6 +911,29 @@ def decide(decision_id: str, option_id: str, words: str = "") -> dict:
             **({"next": next_page} if next_page else {})}
 
 
+# ---------- small decisions, settled for the owner ----------
+
+def settled_list() -> list[dict]:
+    return [{"id": str(i["id"]), "question": plain(i["question"]), "chosen": plain(i["chosen"]),
+             "why": plain(i.get("why") or ""), "at": i["at"]} for i in small_decisions.recent()]
+
+
+def undo_settled(mission_id: int) -> dict:
+    if not small_decisions.undo(mission_id):
+        raise ApiError(410, "That's no longer there to take back.")
+    return {"ok": True}
+
+
+def preferences() -> dict:
+    return {"decideSmall": small_decisions.on()}
+
+
+def set_preferences(b: dict) -> dict:
+    if "decideSmall" in b:
+        small_decisions.set_on(bool(b["decideSmall"]))
+    return preferences()
+
+
 # ---------- timeline ----------
 
 UPKEEP_OUTPUT = r"\d+ active, \d+ stale, \d+ archived|Quality check failed.*"  # curate_skills / learn
@@ -931,6 +959,8 @@ def timeline_event(row: sqlite3.Row, names: dict[str, str], changes: dict[str, l
         if what.startswith("CEO discarded the fix"):
             return make("decided", "you", "You chose not to apply a fix", f"{routine} stays paused." if routine else None)
         return make("decided", "you", what)
+    if m := re.match(r"Settled for you: (.+?)\. \((.+)\)$", what, re.S):
+        return make("decided", "coo", f"Settled for you: {m.group(1)}", f"{m.group(2)}. You can undo it in Decisions.")
     if m := re.match(r"Started building (.+?)\.$", what):
         return make("heads-up", "coo", f"Started building {m.group(1)}", "I'll test it safely before it runs for real.")
     if m := re.match(r"Built (.+?)\. (.*)$", what, re.S):
@@ -2141,6 +2171,10 @@ def body_field(body: dict, name: str, kind: type):
 ROUTES = [
     ("GET", r"/v1/overview", lambda q, b: overview()),
     ("GET", r"/v1/decisions", lambda q, b: decisions()),
+    ("GET", r"/v1/decisions/settled", lambda q, b: settled_list()),
+    ("POST", r"/v1/decisions/settled/(?P<id>\d+)/undo", lambda q, b, id: undo_settled(int(id))),
+    ("GET", r"/v1/preferences", lambda q, b: preferences()),
+    ("POST", r"/v1/preferences", lambda q, b: set_preferences(b)),
     ("POST", r"/v1/decisions/(?P<id>[^/]+)", lambda q, b, id: decide(id, body_field(b, "optionId", str), str(b.get("note") or ""))),
     ("GET", r"/v1/timeline", lambda q, b: timeline(max(1, min(200, int(q.get("limit", ["50"])[0]))))),
     ("GET", r"/v1/routines", lambda q, b: routines()),

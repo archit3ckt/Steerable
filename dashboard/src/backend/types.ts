@@ -684,6 +684,13 @@ export type Overview = {
 export interface CompanyBackend {
   overview(): Promise<Overview>;
   decisions(): Promise<Decision[]>;
+  /** Small decisions settled for the owner this week (when they let the COO decide small things); newest first. */
+  settledDecisions?(): Promise<SettledDecision[]>;
+  /** Take one back: it returns to their decisions. */
+  undoSettled?(id: string): Promise<void>;
+  /** The owner's choices about how the COO works with them. */
+  preferences?(): Promise<Preferences>;
+  setPreferences?(changes: Partial<Preferences>): Promise<Preferences>;
   /** `note`: the owner's words, for an option with `input`. */
   decide(decisionId: string, optionId: string, note?: string): Promise<TimelineEvent>;
   timeline(limit?: number): Promise<TimelineEvent[]>;
@@ -792,3 +799,12 @@ export interface CompanyBackend {
   /** The COO opens the onboarding conversation, unless it already has. Returns its first message, or null. */
   startOnboarding(): Promise<ChatMessage | null>;
 }
+
+/** How the owner wants the COO to work with them (the engine's .cache/preferences.json). */
+export type Preferences = {
+  /** "Decide small things for me": small questions that are easy to undo are settled with the COO's pick. */
+  decideSmall: boolean;
+};
+
+/** A small decision the COO settled for the owner (the engine's small_decisions.py). */
+export type SettledDecision = { id: string; question: string; chosen: string; why: string; at: ISODate };

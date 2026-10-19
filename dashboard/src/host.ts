@@ -73,6 +73,10 @@ export type DashboardHost = {
 export type DashboardActions = {
   /** `note`: the owner's words, for an option that asks for them. */
   decide(decisionId: string, optionId: string, note?: string): Promise<ActionResult>;
+  /** "Decide small things for me" on or off. */
+  setDecideSmall?(on: boolean): Promise<ActionResult>;
+  /** Take back a small decision settled for the owner. */
+  undoSettled?(id: string): Promise<ActionResult>;
   setRoutinePaused(routineId: string, paused: boolean): Promise<ActionResult>;
   /** "Run now": one run of a routine that's switched on. */
   runRoutine(routineId: string): Promise<ActionResult>;

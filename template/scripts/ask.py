@@ -55,6 +55,17 @@ def main() -> int:
                          options = excluded.options, recommendation = excluded.recommendation,
                          recommendation_why = excluded.recommendation_why, updated = CURRENT_TIMESTAMP""",
                     (args.question, goal["id"] if goal else None, args.context, json.dumps(options), args.recommend, args.why))
+        mission_id = con.execute("SELECT id FROM missions WHERE mission = ?", (args.question,)).fetchone()["id"]
+    # The owner may let small decisions be settled for them (small_decisions.py): then this one
+    # may be, with your pick, and you carry on.
+    import small_decisions
+
+    settled = small_decisions.consider(mission_id, args.question, args.context, options, args.recommend, args.why)
+    if settled:
+        log_run("ask", "settled", question=args.question, option=settled["id"])
+        print(f"Settled: the owner lets you decide small things like this, so go with \"{settled['label']}\" and carry on. "
+              "They'll see it in Decisions and the brief, and can undo it.")
+        return 0
     record_event(f"Asked you to decide: {args.question}", who="COO", mission=args.question)
     log_run("ask", "ok", question=args.question)
     print(f"Asked. It's waiting for the owner in Decisions: {args.question}")

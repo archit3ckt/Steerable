@@ -17,6 +17,22 @@ import { backend } from "./host";
 
 // The owner's actions. backend() checks the session first.
 
+export async function setDecideSmall(on: boolean) {
+  const result = await dashboardAction(backend, async (b) => {
+    await b.setPreferences?.({ decideSmall: Boolean(on) });
+  });
+  refresh();
+  return result;
+}
+
+export async function undoSettled(id: string) {
+  const result = await dashboardAction(backend, async (b) => {
+    await b.undoSettled?.(String(id));
+  });
+  refresh();
+  return result;
+}
+
 export async function decide(decisionId: string, optionId: string, note?: string) {
   let next: string | undefined;
   const result = await dashboardAction(backend, async (b) => {

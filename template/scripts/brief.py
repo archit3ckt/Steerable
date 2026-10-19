@@ -69,6 +69,11 @@ def build() -> tuple[str, list]:
         for n, (tid, text) in enumerate(approvals, 1):
             lines.append(f"{n}. {text.replace('needs:approval', '').strip()}")
             buttons.append([(f"✅ Approve {n}", f"ap:{tid}"), (f"❌ Reject {n}", f"rj:{tid}")])
+    import small_decisions
+
+    settled = small_decisions.brief_line()
+    if settled:
+        lines += ["", settled]
     board = waiting_on_ceo()
     if board:
         lines += ["", "📋 On the mission board, waiting on you:"]
