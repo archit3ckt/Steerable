@@ -15,6 +15,9 @@ export function TodayPage({ host, notice }: { host: DashboardHost; notice?: Reac
       <Suspense>
         <GettingStartedNudge host={host} />
       </Suspense>
+      <Suspense>
+        <SettingUpNote host={host} />
+      </Suspense>
       <Suspense fallback={<HeroSkeleton />}>
         <Hero host={host} notice={notice} />
       </Suspense>
@@ -63,6 +66,45 @@ async function GettingStartedNudge({ host }: { host: DashboardHost }) {
         </p>
       </div>
       <ArrowRight className="size-5 shrink-0 text-accent transition-transform group-hover:translate-x-0.5" />
+    </Link>
+  );
+}
+
+/**
+ * While new routines are being set up (built and tested, which takes a while), say so on Today: what,
+ * that it can take up to an hour, and that there's nothing to do meanwhile. Otherwise the owner who
+ * just approved one sees nothing happening anywhere. Not for one that's waiting on them (that's in
+ * Needs you) or ready to look at.
+ */
+async function SettingUpNote({ host }: { host: DashboardHost }) {
+  const backend = await host.backend();
+  const [{ company }, routines, decisions] = await Promise.all([backend.overview(), backend.routines(), backend.decisions()]);
+  const waiting = decisions.map((d) => d.title).join("\n");
+  const names = routines
+    .filter((r) => r.status === "setting-up" && r.stage === "building" && !waiting.includes(r.name))
+    .map((r) => r.name);
+  if (!names.length) return null;
+  const what = names.length === 1 ? `\u201c${names[0]}\u201d` : `${names.length} new routines`;
+  return (
+    <Link
+      href="/work"
+      className="group mb-8 flex animate-rise items-center gap-4 rounded-2xl border border-line bg-surface p-4 pr-5 shadow-card transition-shadow hover:shadow-lift"
+    >
+      <span className="relative grid size-10 shrink-0 place-items-center rounded-full bg-sky-soft text-sky">
+        <Clock className="size-5" />
+        <span className="absolute -top-0.5 -right-0.5 size-2.5 animate-pulse rounded-full bg-sky" />
+      </span>
+      <div className="min-w-0 flex-1">
+        <p className="font-medium text-ink">
+          {company.cooName} is setting up {what}
+        </p>
+        <p className="text-sm text-ink-2">
+          {names.length > 1 && <>{names.join(", ")}. </>}
+          Building and testing a new routine can take up to an hour. Nothing for you to do: come back later, and it&apos;ll be here
+          for you to look at before it starts.
+        </p>
+      </div>
+      <ArrowRight className="size-5 shrink-0 text-ink-3 transition-transform group-hover:translate-x-0.5" />
     </Link>
   );
 }
