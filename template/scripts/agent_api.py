@@ -1612,11 +1612,15 @@ def status() -> dict:
 
     # New routines being built after the owner approved them.
     builds = sorted(builder.load().values(), key=lambda b: b.get("finished") or b.get("opened") or "")
-    building = [b["title"] for b in builds if b["status"] in ("building", "failed")]  # failed: trying again on its own
+    active = [b for b in builds if b["status"] in ("building", "failed")]  # failed: trying again on its own
+    building = [b["title"] for b in active if not b.get("change")]
+    updating = list(dict.fromkeys(b["title"] for b in active if b.get("change")))
     stuck = [b["title"] for b in builds if b["status"] == "needs_owner"]
     ready = [b["title"] for b in builds if b["status"] == "ready"]
-    if building:
-        state, summary = "working", f"Setting up {_quoted(building)}"
+    if building or updating:
+        parts = ([f"Setting up {_quoted(building)}"] if building else []) + \
+                ([f"Updating {_quoted(updating)} (the current version keeps running)"] if updating else [])
+        state, summary = "working", "; ".join(parts)
     elif stuck:
         state, summary = "needsYou", f"{_quoted(stuck)} needs you in Decisions"
     elif ready:
