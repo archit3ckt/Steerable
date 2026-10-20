@@ -13,7 +13,7 @@
     "auth": {
       "type": "apikey",
       "keyLabel": "Restricted key",
-      "keyHint": "In Stripe, open Developers, then API keys, and create a restricted key. Give it Read access to what your COO should see.",
+      "keyHint": "In Stripe, open Developers, then API keys, and create a restricted key. Give it Read access to everything, and Write access to Invoices so your COO can send payment reminders.",
       "keyPattern": "^(rk|sk)_(live|test)_[A-Za-z0-9]{10,}$",
       "header": "Authorization",
       "headerFormat": "Bearer {key}"

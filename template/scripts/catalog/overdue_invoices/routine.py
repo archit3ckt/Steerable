@@ -119,9 +119,9 @@ def main() -> None:
         lines.append(f"**Reminded {len(reminded)} client{'s' if len(reminded) != 1 else ''} about overdue invoices:**")
         lines += [f"- {r}" for r in reminded]
     if not_sent:
-        lines.append(f"**{len(not_sent)} overdue invoice{'s' if len(not_sent) != 1 else ''} I couldn't send a reminder "
-                     "for:** your Stripe key can read invoices but not send them. In Stripe, give the key "
-                     "Invoices: Write (Developers, API keys), then reconnect Stripe here.")
+        lines.append(f"**{len(not_sent)} client{'s are' if len(not_sent) != 1 else ' is'} late paying, but Stripe hasn't let "
+                     "me send reminders yet.** Connect Stripe again on the Connections page, and allow it to send "
+                     "invoices when it asks. I'll send them the next time I check.")
         lines += [f"- {r}" for r in not_sent]
     if checks:
         lines.append("**Please check these in Stripe:** I tried to send a reminder but couldn't tell if it went out.")

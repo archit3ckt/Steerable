@@ -29,4 +29,8 @@ A folder named for the entry's id (lowercase, underscores):
   adds nothing new.
 - Anything it can't undo (send, post, pay) goes through `common.act()`; it keeps its records in a
   library table with a key; it tells the owner only when there's news (`tell_owner`).
+- Owners aren't technical. Everything they read (messages, what it printed last, flow chart labels,
+  library columns) is plain words: no keys, permissions, API or settings screens of other services.
+  When something only they can fix comes up, say what to do in our app ("connect Stripe again on
+  the Connections page") and nothing more.
 - Our own words and code. Nothing copied from a vendor's samples without checking their license.

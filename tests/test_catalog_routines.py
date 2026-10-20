@@ -155,7 +155,9 @@ class OverdueInvoicesTest(CatalogRoutineTest):
         self.gateway(send_status=403)
         lines = self.run_it(dry=False)
         self.assertEqual(lines[-1], "Found 2 overdue invoices, but Stripe didn't let me send reminders")
-        self.assertIn("Invoices: Write", self.told()[0])
+        told = self.told()[0]
+        self.assertIn("Stripe hasn't let me send reminders yet", told)
+        self.assertNotIn("key", told.lower())  # the owner isn't technical: no keys, scopes or settings screens
         self.assertEqual({r["Status"] for r in self.rows("Invoice reminders")}, {"Not sent"})
 
 
