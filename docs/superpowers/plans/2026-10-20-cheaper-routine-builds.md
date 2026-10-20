@@ -164,3 +164,19 @@ Each is its own commit, written to the Workflow standard (steps, `act()` for any
 - Batch API (half price) for background AI. Looked at 2026-10-20: almost all spend is agent runs (chat, builds, incidents, books, learning), which the Batch API can't run; the direct calls (`agent.complete`) are ones someone waits on (watched-run checks, "Test it", reviews, owner wording). The one candidate is the nightly learning review (`learn.py`, capped $0.30/day): it would become one batched Messages call returning skill edits that the engine writes, saving at most ~$4.50 a company a month, and needs the gateway to pass `/v1/messages/batches` through and record usage at the batch price. Do it once beta numbers show learning is a real share of spend.
 - The next seven catalog routines, picked from what owners ask for in the beta (candidates: review requests after a sale, new-lead follow-up, booking confirmations and reminders, reorder alerts, unpaid supplier bills, social post from the week's news, monthly summary for the accountant).
 - Jev triage in the chat: send a short message that needs no tools ("thanks", "ok do it") to a cheap single call on the same model instead of a full Claude Code turn.
+
+## Status (2026-10-20)
+
+Tasks 1 to 7 done on branch `cheaper-builds`, 173 engine tests passing. Two choices made while building:
+- A retry after a failure starts afresh with what went wrong (`failure`, shown in both prompts), not in the old
+  conversation: a failed build's branch is deleted, so the old conversation would point at code that's gone.
+  Fixes after a practice run and the owner's changes do continue the conversation.
+- The email follow-ups routine keeps follow-ups as drafts in the company's drafts/ (Google's connection has
+  no Gmail drafts scope) and sends only when the owner set `SEND`.
+
+Not yet tried with a real model, Jev or real accounts. To measure (needs a real Anthropic key, ~$20):
+1. On a fresh company on `master`, approve: "Remind clients about overdue invoices every Monday", "Send me
+   last week's numbers every Monday", "Follow up on emails that got no reply", and one unusual task.
+2. Note `python scripts/builder.py costs` once each build is ready.
+3. Repeat on `cheaper-builds`; check `catalog.py match` picks the first three and not the fourth (tune
+   `catalog.MATCH_MIN` if Jev's confidences sit differently).

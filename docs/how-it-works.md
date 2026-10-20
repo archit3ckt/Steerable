@@ -66,7 +66,7 @@ The generated `CLAUDE.md` makes Claude the COO and you the CEO. Claude:
 | **`memory/`** | Plain-file memory you can read and edit: company, processes, decisions, ideas. |
 | **Skills** | `.claude/skills/`: how to do each kind of task for *you*, written and curated by the COO. |
 | **Browser** | Playwright with Chromium, so the COO can work on the web. |
-| **Routine builder** | `scripts/builder.py`: when you approve a routine that doesn't exist yet, the COO builds it in a separate git branch, tests it in dry-run mode, and only switches it on once it works. |
+| **Routine builder** | `scripts/builder.py`: when you approve a routine that doesn't exist yet, the COO builds it in a separate git branch, tests it in dry-run mode, and only switches it on once it works. Common routines start from tested ones in `scripts/catalog/` (see its README), so they're quicker and cheaper to set up. |
 | **Dashboard** | `dashboard/`: an optional web app for you. Today's brief, decisions with one-tap choices, the timeline, routines and to-dos, goals, and chat with your COO, on your phone or computer, behind a passphrase. See [dashboard/README.md](../dashboard/README.md). |
 | **Agent API** | `scripts/agent_api.py`: the HTTP API the dashboard (and the hosted version, Steerable Cloud) uses. Shows decisions, the timeline, routines, goals and chat in plain words, and acts through the same code paths as Telegram. Standard library only. |
 
