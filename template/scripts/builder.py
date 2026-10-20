@@ -458,6 +458,26 @@ How to work:
 """
 
 
+def _resume_prompt(b: dict, wt: str) -> str:
+    """For an attempt that continues the build's own conversation (fixes after its practice run, the
+    owner's change, a retry): it already knows the business and its own code, so only what's new, and
+    where its work is now."""
+    name = b["workflow"]
+    failure = f"\nYour last attempt didn't finish. What went wrong:\n{b['failure']}\n" if b.get("failure") else ""
+    return f"""Back to the same routine ({b['title']}). Your work so far is committed on branch build/{name}, now in a
+new worktree at {wt} (the old one is gone): from now on create and edit files ONLY there.
+{_feedback(b)}{failure}
+{_accounts()}
+
+Same rules as before. With the new place:
+- Test only in dry-run mode: cd {wt} && STEERABLE_DRY_RUN=1 .venv/bin/python workflows/{name}.py "{b['task']}"
+- Then cd {wt} && .venv/bin/python scripts/routine_check.py workflows/{name}.py, and fix everything it reports.
+- Commit with `git -C {wt} add workflows/` and `git -C {wt} commit -m "{'Update' if b.get('change') else 'Build'} {name}"`. Do not merge.
+- Answer as before: status built, needs_owner (with what, in plain words) or failed (with why); summary and needs
+  for a busy owner who isn't technical.
+"""
+
+
 AUTO_FIX_ROUNDS = 2  # attempts that fix what a practice run's review found, before the owner sees it
 
 
@@ -474,7 +494,8 @@ def _auto_fix(bid: str, b: dict, fields: dict, review: dict, rounds: int, cost: 
     live_path(bid).unlink(missing_ok=True)
     log_run("builder", "auto_fix", cost_usd=cost, build=bid, workflow=name, round=rounds + 1, fixes=review["fixes"])
     _open(name, b["task"], exists=bool(b.get("change")), change=b.get("change"), feedback=b.get("feedback"),
-          fixes=review["fixes"], base=base, rounds=rounds + 1, catalog=b.get("catalog"), prev=bid)
+          fixes=review["fixes"], base=base, rounds=rounds + 1, catalog=b.get("catalog"), prev=bid,
+          resume=fields.get("session"))
 
 
 def build(bid: str) -> None:
@@ -495,21 +516,34 @@ def build(bid: str) -> None:
     link_shared(wt)
 
     LIVE.mkdir(exist_ok=True)
-    out = agent.run(
-        _prompt(b, str(wt)), budget_usd=PER_BUILD_CAP_USD, schema=RESULT_SCHEMA, add_dirs=[wt],
-        # Connected services as MCP tools, always in dry-run mode: exploring can't change anything.
-        mcp="dry",
-        # Reads: project and worktree. Writes: the worktree only. Runs: python and git there. Secrets denied.
-        allow=["Read(./**)", f"Read(/{wt}/**)", "Glob", "Grep", "WebFetch", "WebSearch",
-               f"Edit(/{wt}/**)", f"Write(/{wt}/**)", "Bash(.venv/bin/python scripts/ops_db.py*)",
-               f"Bash(cd {wt} && STEERABLE_DRY_RUN=1 .venv/bin/python *)", f"Bash(git -C {wt} *)",
-               f"Bash(cd {wt} && .venv/bin/python scripts/routine_check.py *)"],
-        deny=["Read(./.env)", f"Read(/{wt}/.env)", "Read(./.cache/**)", f"Read(/{wt}/.cache/**)"],
-        timeout=2400, live=live_path(bid))
+
+    def run(prompt: str, resume: str | None) -> agent.Result:
+        out = agent.run(
+            prompt, budget_usd=PER_BUILD_CAP_USD, schema=RESULT_SCHEMA, add_dirs=[wt], resume=resume,
+            # Connected services as MCP tools, always in dry-run mode: exploring can't change anything.
+            mcp="dry",
+            # Reads: project and worktree. Writes: the worktree only. Runs: python and git there. Secrets denied.
+            allow=["Read(./**)", f"Read(/{wt}/**)", "Glob", "Grep", "WebFetch", "WebSearch",
+                   f"Edit(/{wt}/**)", f"Write(/{wt}/**)", "Bash(.venv/bin/python scripts/ops_db.py*)",
+                   f"Bash(cd {wt} && STEERABLE_DRY_RUN=1 .venv/bin/python *)", f"Bash(git -C {wt} *)",
+                   f"Bash(cd {wt} && .venv/bin/python scripts/routine_check.py *)"],
+            deny=["Read(./.env)", f"Read(/{wt}/.env)", "Read(./.cache/**)", f"Read(/{wt}/.cache/**)"],
+            timeout=2400, live=live_path(bid))
+        record("builder", out.cost, model=out.model, note=bid)
+        return out
+
+    # A later attempt goes on in the build's own conversation: it already read the business and wrote the
+    # code, so it doesn't pay to learn them again. If that conversation is gone (a new engine, another
+    # agent), it starts afresh from the code on the branch.
+    resume = b.get("resume")
+    out = run(_resume_prompt(b, str(wt)) if resume else _prompt(b, str(wt)), resume)
+    cost, turns = out.cost, int(out.raw.get("num_turns") or 0)
+    if resume and not out.structured:
+        log_run("builder", "resume_failed", build=bid, workflow=name, error=out.error[-300:])
+        out = run(_prompt(b, str(wt)), None)
+        cost, turns = cost + out.cost, turns + int(out.raw.get("num_turns") or 0)
     result = out.structured
-    cost = out.cost
-    record("builder", cost, model=out.model, note=bid)
-    spent = {"cost_usd": cost, "turns": int(out.raw.get("num_turns") or 0), "session": out.session_id or ""}
+    spent = {"cost_usd": round(cost, 6), "turns": turns, "session": out.session_id or ""}
     if not result:
         _cleanup(bid, name)
         update(bid, status="failed", summary="Something went wrong while I was building it.", needs="",
@@ -742,7 +776,7 @@ def revise(bid: str, note: str) -> str | None:
     git("branch", "-m", branch, base)
     update(bid, status="revised")
     bid2 = _open(b["workflow"], b["task"], exists=bool(b.get("change")), change=b.get("change"), feedback=note, base=base,
-                 catalog=b.get("catalog"), prev=bid)
+                 catalog=b.get("catalog"), prev=bid, resume=b.get("session"))
     if bid2:
         record_event(f"You asked for a change to {b['title']}: {note}", who="CEO", workflow=b["workflow"])
     return bid2

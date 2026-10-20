@@ -36,7 +36,9 @@ class Company:
         subprocess.run([*git, "commit", "-qm", "start"], cwd=self.root, check=True)
 
     def env(self, **extra) -> dict:
-        return {**os.environ, "PATH": f"{self.bin}:{os.environ['PATH']}", "HOME": str(self.home),
+        clean = {k: v for k, v in os.environ.items()
+                 if k not in ("ANTHROPIC_API_KEY", "ANTHROPIC_BASE_URL", "STEERABLE_GATEWAY_URL", "STEERABLE_JOBS_URL", "JEV_API_KEY")}
+        return {**clean, "PATH": f"{self.bin}:{os.environ['PATH']}", "HOME": str(self.home),
                 "FAKE_LOG": str(self.log), "GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@t",
                 "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@t", **extra}
 
