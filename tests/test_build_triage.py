@@ -1,7 +1,7 @@
-"""A failed build is retried only when a retry can help (builder._triage, Jev first through decide):
-a passing problem is tried again with what went wrong, something only the owner can give becomes
-their decision, something impossible stops and is reported once, a used-up budget waits for next
-month. Here decide runs on keyword rules, and a fake `claude` fails the build as told.
+"""A failed build is the system's, never the owner's (builder._triage, Jev first through decide): it's
+tried again with what went wrong, or, when it can't be built this way, stopped and reported once until
+a new engine; a used-up budget waits for next month. Nothing of it reaches the owner's Decisions. Here
+decide runs on keyword rules, and a fake `claude` fails the build as told.
 
     python3 -m unittest tests.test_build_triage -v
 """
@@ -42,7 +42,9 @@ builder.build(started.pop(0))
 b = builder.load()[first]
 retried = builder.retry_failed(now=datetime.now(timezone.utc) + timedelta(hours=2))
 prompt = builder._prompt(builder.load()[retried[0]], "/wt") if retried else ""
-print(json.dumps({"first": b, "retried": retried, "prompt": prompt, "reported": len(reported)}))
+import agent_api
+asks = [d["id"] for d in agent_api.decisions() if d["id"].startswith("build:")]
+print(json.dumps({"first": b, "retried": retried, "prompt": prompt, "reported": len(reported), "asks": asks}))
 """
 
 
@@ -65,12 +67,18 @@ class BuildTriageTest(unittest.TestCase):
         self.assertEqual(len(out["retried"]), 1)
         self.assertIn("ReadTimeout", out["prompt"])  # the next attempt knows what went wrong
 
-    def test_needs_owner_is_not_retried(self):
-        out = self.fail("It has to log in to the supplier portal to see the orders.")
-        self.assertEqual(out["first"]["status"], "needs_owner")
-        self.assertEqual(out["first"]["triage"], "owner")
-        self.assertIn("supplier portal", out["first"]["needs"])
-        self.assertEqual(out["retried"], [])
+    def test_failures_never_reach_the_owner(self):
+        # Even when its words sound like the owner's business: what only they can give, a build asks
+        # for itself (status needs_owner); a failure is the system's to sort out.
+        for summary in ("It has to log in to the supplier portal to see the orders.",
+                        "Couldn't connect to the shop's server."):
+            with self.subTest(summary=summary):
+                out = self.fail(summary)
+                self.assertEqual(out["first"]["status"], "failed")
+                self.assertEqual(out["first"]["triage"], "retry")
+                self.assertEqual(out["asks"], [])
+                self.assertEqual(len(out["retried"]), 1)
+                self.co.builds({})
 
     def test_impossible_is_reported_once(self):
         out = self.fail("The shop's terms say automated orders are not allowed.")
@@ -78,6 +86,18 @@ class BuildTriageTest(unittest.TestCase):
         self.assertEqual(out["first"]["triage"], "stop")
         self.assertEqual(out["retried"], [])
         self.assertEqual(out["reported"], 1)
+        self.assertEqual(out["asks"], [])
+        # A new engine may well fix it: then it gets a fresh round.
+        (self.co.tmp / "VERSION").write_text("newer")
+        code = r"""
+import json, subprocess
+from datetime import datetime, timedelta, timezone
+import builder
+real_popen = subprocess.Popen
+builder.subprocess.Popen = lambda cmd, *a, **k: None if str(cmd[1]).endswith("builder.py") else real_popen(cmd, *a, **k)
+print(json.dumps(builder.retry_failed(now=datetime.now(timezone.utc) + timedelta(hours=2))))
+"""
+        self.assertEqual(len(self.co.py(code, STEERABLE_VERSION_FILE=str(self.co.tmp / "VERSION"))), 1)
 
     def test_budget_waits_for_next_month(self):
         self.co.builds({"bx": {"id": "bx", "workflow": "count_new", "task": "Count new things  @workflow:count_new  every:daily",

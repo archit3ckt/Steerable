@@ -167,6 +167,8 @@ Each is its own commit, written to the Workflow standard (steps, `act()` for any
 
 ## Status (2026-10-20)
 
+Changed after review with the owner: `_triage` has no "owner" outcome. A failure is never the owner's to hear about (the original design: a build asks the owner only through its own `needs_owner`); "stop" waits for a new engine version like a build out of tries.
+
 Tasks 1 to 7 done on branch `cheaper-builds`, 173 engine tests passing. Two choices made while building:
 - A retry after a failure starts afresh with what went wrong (`failure`, shown in both prompts), not in the old
   conversation: a failed build's branch is deleted, so the old conversation would point at code that's gone.

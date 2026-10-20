@@ -199,11 +199,12 @@ def _engine_version() -> str:
 
 def retry_failed(now: datetime | None = None) -> list[str]:
     """Start failed builds again when it's their time (the heartbeat calls this). Returns what it started.
-    Only failures a retry can fix come back (_triage); one stopped by a used-up budget waits for next month."""
+    A failure is never the owner's: one a retry can't fix (_triage) waits, like one out of tries, for a new
+    engine; one stopped by a used-up budget waits for next month."""
     started = []
     now = now or datetime.now(timezone.utc)
     for b in list(load().values()):
-        if b["status"] != "failed" or b.get("triage") == "stop":
+        if b["status"] != "failed":
             continue
         if b.get("wait_month"):
             try:
@@ -220,7 +221,7 @@ def retry_failed(now: datetime | None = None) -> list[str]:
                 log_run("builder", "retry", build=new, workflow=b["workflow"], why="new month")
             continue
         attempt = int(b.get("attempt") or 1)
-        if attempt > len(RETRY_AFTER):
+        if attempt > len(RETRY_AFTER) or b.get("triage") == "stop":
             if b.get("version") == _engine_version():
                 if not b.get("reported"):
                     update(b["id"], reported=True)
@@ -532,22 +533,21 @@ Same rules as before. With the new place:
 """
 
 
-# Why a build failed decides what happens next: a retry only when one can help. Jev first (decide.py),
-# so this costs next to nothing; the last option is the default when nothing can tell.
-TRIAGE_QUESTION = "A routine build failed. What would help?"
+# Why a build failed decides whether another attempt is worth paying for. Jev first (decide.py), so this
+# costs next to nothing; the last option is the default when nothing can tell. A failure never goes to
+# the owner: what only they can give, the build asks for itself (status needs_owner, with what it needs).
+TRIAGE_QUESTION = "A routine build failed. Would another attempt help?"
 TRIAGE = {
-    "owner": "it needs something only the owner can give: a login, a connected account, a choice about how the "
-             "business works, a clearer request",
-    "stop": "it can't be built this way at all: the service doesn't allow it, or the task is impossible",
+    "stop": "no: it can't be built this way at all (the service doesn't allow it, the task is impossible), so "
+            "trying again would fail the same way",
     "retry": "a passing problem (a timeout, the network, a site or service down for a while, running out of turns), "
              "or a mistake in its own code that another attempt can fix",
 }
-TRIAGE_RULES = {"log in": "owner", "login": "owner", "sign in": "owner", "connect": "owner", "not allowed": "stop",
-                "doesn't allow": "stop", "impossible": "stop", "timeout": "retry", "timed out": "retry"}
+TRIAGE_RULES = {"not allowed": "stop", "doesn't allow": "stop", "impossible": "stop"}
 
 
 def _triage(b: dict, fields: dict, error: str = "") -> str:
-    """"retry", "owner" or "stop" for a failed build. Any trouble deciding means "retry", as before."""
+    """"retry" or "stop" for a failed build. Any trouble deciding means "retry", as before."""
     context = "\n".join(x for x in (fields.get("summary"), fields.get("needs"),
                                     (fields.get("test_output") or "")[-1500:], (error or "")[-1500:]) if x)
     try:
@@ -558,14 +558,10 @@ def _triage(b: dict, fields: dict, error: str = "") -> str:
 
 
 def _settle_failure(b: dict, fields: dict, error: str = "", triage: str | None = None) -> tuple[str, dict]:
-    """The status a failed build ends in, and its fields: kept for a retry with what went wrong, handed
-    to the owner as their decision, or stopped and reported once."""
+    """The status a failed build ends in (always "failed": the system's to sort out, never the owner's), and
+    its fields: kept for a retry with what went wrong, or stopped and reported once."""
     kind = triage or _triage(b, fields, error)
     fields = {**fields, "triage": kind}
-    if kind == "owner":
-        fields["needs"] = fields.get("needs") or owner_words.say(fields.get("summary", ""), wait=True)
-        log_run("builder", "needs_owner", build=b["id"], workflow=b["workflow"], why="triage")
-        return "needs_owner", fields
     if kind == "stop":
         fields["reported"] = True
         burst.report_problem("build_failed", b["workflow"], (fields.get("summary") or "")[-600:])
