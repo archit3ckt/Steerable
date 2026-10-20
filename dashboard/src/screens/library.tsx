@@ -14,6 +14,7 @@ import { PlanChanges, withoutTitle } from "../plan-text";
 import { Markdown } from "../markdown";
 import { Poll } from "../poll";
 import { orNull } from "../shell";
+import { ArchiveTableButton, ArchivedTables } from "../library-table-archive";
 import { Card, Empty, PageHeader, Skeleton, cx } from "../ui";
 
 type SearchParams = Promise<Record<string, string | string[] | undefined>>;
@@ -400,15 +401,20 @@ async function Results({ host, q }: { host: DashboardHost; q: string }) {
 
 async function Tables({ host }: { host: DashboardHost }) {
   const backend = await host.backend();
-  const [{ company }, tables, now] = await Promise.all([backend.overview(), backend.library(), host.now()]);
+  const [{ company }, tables, archived, now] = await Promise.all([backend.overview(), backend.library(), backend.library({ archived: true }), host.now()]);
+  const shelf = archived.length > 0 && <ArchivedTables tables={archived} setArchived={host.actions.setLibraryTableArchived} />;
   if (!tables.length) {
     return (
-      <Empty icon={<Table2 className="size-5" />} title="Nothing here yet">
-        When {company.cooName} or a routine keeps records for you (job openings, leads, orders, suppliers), they show up here as tables you can search, sort and change.
-      </Empty>
+      <>
+        <Empty icon={<Table2 className="size-5" />} title="Nothing here yet">
+          When {company.cooName} or a routine keeps records for you (job openings, leads, orders, suppliers), they show up here as tables you can search, sort and change.
+        </Empty>
+        {shelf}
+      </>
     );
   }
   return (
+    <>
     <div className="grid gap-4 sm:grid-cols-2">
       {tables.map((t) => (
         <Link key={t.id} href={`/library/${encodeURIComponent(t.id)}`} className="group min-w-0">
@@ -430,6 +436,8 @@ async function Tables({ host }: { host: DashboardHost }) {
         </Link>
       ))}
     </div>
+    {shelf}
+    </>
   );
 }
 
@@ -523,9 +531,12 @@ async function TableView({ host, id, searchParams }: { host: DashboardHost; id: 
   const detail = nav.row ? await backend.libraryRow(tableId, nav.row) : null;
   return (
     <>
-      <header className="mb-4">
-        <h1 className="font-display text-4xl leading-tight">{meta.table.name}</h1>
-        {meta.table.description && <p className="mt-1 text-ink-2">{meta.table.description}</p>}
+      <header className="mb-4 flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h1 className="font-display text-4xl leading-tight">{meta.table.name}</h1>
+          {meta.table.description && <p className="mt-1 text-ink-2">{meta.table.description}</p>}
+        </div>
+        <ArchiveTableButton table={meta.table} setArchived={host.actions.setLibraryTableArchived} />
       </header>
       <LibraryWorkspace
         table={meta.table}

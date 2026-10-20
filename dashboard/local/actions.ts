@@ -109,6 +109,12 @@ export async function setLibraryRowArchived(tableId: string, rowId: string, arch
   return result;
 }
 
+export async function setLibraryTableArchived(tableId: string, archived: boolean) {
+  const result = await dashboardAction(backend, (b) => b.setLibraryTableArchived(String(tableId), archived === true));
+  refresh();
+  return result;
+}
+
 export async function saveLibraryView(tableId: string, viewId: string | null, view: unknown) {
   let id: string | undefined;
   const result = await dashboardAction(backend, async (b) => {

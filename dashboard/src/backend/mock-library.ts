@@ -23,6 +23,7 @@ type Table = {
   rows: LibraryRowDetail[];
   views: LibraryView[];
   comments: Record<string, LibraryComment[]>;
+  archived?: boolean;
 };
 
 const allRows = (): LibraryView => ({ id: `v_${Math.random().toString(36).slice(2, 8)}`, name: "All rows", type: "grid", config: {} });
@@ -118,7 +119,11 @@ function check(column: LibraryColumn, value: CellValue): CellValue {
 }
 
 export function libraryOps(tables: () => Table[]) {
-  const find = (ref: string) => tables().find((t) => t.id === ref || t.name.toLowerCase() === ref.toLowerCase());
+  const any = (ref: string) => tables().find((t) => t.id === ref || t.name.toLowerCase() === ref.toLowerCase());
+  const find = (ref: string) => {
+    const t = any(ref);
+    return t && !t.archived ? t : undefined;
+  };
   const plain = (row: LibraryRowDetail): LibraryRow => {
     const copy: Partial<LibraryRowDetail> = { ...row };
     delete copy.history;
@@ -127,8 +132,9 @@ export function libraryOps(tables: () => Table[]) {
     return copy as LibraryRow;
   };
   return {
-    async library(): Promise<LibraryTableSummary[]> {
-      return [...tables()]
+    async library(options?: { archived?: boolean }): Promise<LibraryTableSummary[]> {
+      return tables()
+        .filter((t) => Boolean(t.archived) === Boolean(options?.archived))
         .sort((a, b) => b.updated.localeCompare(a.updated))
         .map((t) => ({ id: t.id, name: t.name, description: t.description, updated: t.updated, rows: t.rows.filter((r) => !r.archived).length, columns: t.columns.map((c) => c.name) }));
     },
@@ -288,6 +294,13 @@ export function libraryOps(tables: () => Table[]) {
         row.history.unshift({ who: "you", what: changes.map(([k, v]) => (v === null ? `Cleared ${k}` : `Set ${k} to ${v}`)).join("; "), at: now });
       }
       return plain(row);
+    },
+    async setLibraryTableArchived(tableId: string, archived: boolean) {
+      const t = any(tableId);
+      if (!t) throw new AgentError(`There's no table called ${tableId}.`, 404);
+      if (Boolean(t.archived) === archived) throw new AgentError(archived ? "That table is already archived." : "That table isn't archived.", 400);
+      t.archived = archived;
+      t.updated = new Date().toISOString();
     },
     async setLibraryRowArchived(tableId: string, rowId: string, archived: boolean) {
       const row = find(tableId)?.rows.find((r) => r.id === rowId);

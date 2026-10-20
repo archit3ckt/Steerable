@@ -710,14 +710,16 @@ export interface CompanyBackend {
   trace(traceId: string): Promise<Trace | null>;
   /** A picture from a trace (TraceEvent.shot). */
   traceShot(traceId: string, shot: string): Promise<FileContent>;
-  /** The library's tables, most recently changed first. */
-  library(): Promise<LibraryTableSummary[]>;
+  /** The library's tables, most recently changed first; `archived`: the archived ones instead. */
+  library(options?: { archived?: boolean }): Promise<LibraryTableSummary[]>;
   /** A page of one table (by id or name); null if there's no such table. */
   libraryTable(tableId: string, query?: LibraryQuery): Promise<LibraryPage | null>;
   libraryRow(tableId: string, rowId: string): Promise<LibraryRowDetail | null>;
   /** Add a row (rowId null) or change some of its cells (null clears one). Values are checked; a bad one throws in plain words. */
   saveLibraryRow(tableId: string, rowId: string | null, cells: Record<string, CellValue>): Promise<LibraryRow>;
   setLibraryRowArchived(tableId: string, rowId: string, archived: boolean): Promise<void>;
+  /** A whole table out of the Library, or back. Nothing in it is deleted; an archived table doesn't open. */
+  setLibraryTableArchived(tableId: string, archived: boolean): Promise<void>;
   /** Add a view (viewId null) or change its name or settings. */
   saveLibraryView(tableId: string, viewId: string | null, view: { name?: string; type?: LibraryView["type"]; config?: LibraryViewConfig }): Promise<LibraryView>;
   /** Remove a view (never the last one; the rows stay). */

@@ -92,6 +92,8 @@ export type DashboardActions = {
   /** A library row: add one (rowId null) or change some cells (by column name; null clears). */
   saveLibraryRow(tableId: string, rowId: string | null, cells: Record<string, CellValue>): Promise<ActionResult & { id?: string }>;
   setLibraryRowArchived(tableId: string, rowId: string, archived: boolean): Promise<ActionResult>;
+  /** A whole library table out of the Library, or back (nothing in it is deleted). */
+  setLibraryTableArchived(tableId: string, archived: boolean): Promise<ActionResult>;
   saveLibraryView(tableId: string, viewId: string | null, view: { name?: string; type?: LibraryView["type"]; config?: LibraryViewConfig }): Promise<ActionResult & { id?: string }>;
   deleteLibraryView(tableId: string, viewId: string): Promise<ActionResult>;
   commentLibraryRow(tableId: string, rowId: string, text: string, ask: boolean): Promise<ActionResult>;

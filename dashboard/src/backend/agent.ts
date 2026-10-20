@@ -183,7 +183,7 @@ export function agentBackend({ url, token, company }: { url: string; token: stri
       if (!res.ok) throw new AgentError("That picture isn't here any more.", res.status);
       return { data: await res.arrayBuffer(), contentType: "image/jpeg", disposition: "inline" };
     },
-    library: () => call<LibraryTableSummary[]>("GET", "/v1/library"),
+    library: (options) => call<LibraryTableSummary[]>("GET", options?.archived ? "/v1/library?archived=1" : "/v1/library"),
     async libraryTable(tableId, query = {}) {
       const params = libraryParams(query);
       try {
@@ -245,6 +245,9 @@ export function agentBackend({ url, token, company }: { url: string; token: stri
       const body = await res.json().catch(() => null);
       if (!res.ok) throw new AgentError(typeof body?.error === "string" ? body.error : "That file couldn't be imported.", res.status);
       return body;
+    },
+    async setLibraryTableArchived(tableId, archived) {
+      await call("POST", `/v1/library/tables/${id(tableId)}/${archived ? "archive" : "restore"}`, {}, WRITE_TIMEOUT_MS);
     },
     async setLibraryRowArchived(tableId, rowId, archived) {
       await call("POST", `/v1/library/tables/${id(tableId)}/rows/${id(rowId)}/${archived ? "archive" : "restore"}`, {}, WRITE_TIMEOUT_MS);
