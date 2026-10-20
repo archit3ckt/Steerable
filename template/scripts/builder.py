@@ -31,6 +31,7 @@ from pathlib import Path
 
 import agent
 import burst
+import decide
 import flow
 import integrations
 import owner_words
@@ -194,12 +195,27 @@ def _engine_version() -> str:
     return path.read_text().strip() if path.exists() else ""
 
 
-def retry_failed() -> list[str]:
-    """Start failed builds again when it's their time (the heartbeat calls this). Returns what it started."""
+def retry_failed(now: datetime | None = None) -> list[str]:
+    """Start failed builds again when it's their time (the heartbeat calls this). Returns what it started.
+    Only failures a retry can fix come back (_triage); one stopped by a used-up budget waits for next month."""
     started = []
-    now = datetime.now(timezone.utc)
+    now = now or datetime.now(timezone.utc)
     for b in list(load().values()):
-        if b["status"] != "failed":
+        if b["status"] != "failed" or b.get("triage") == "stop":
+            continue
+        if b.get("wait_month"):
+            try:
+                ended = datetime.fromisoformat(b.get("finished") or b["opened"])
+            except ValueError:
+                ended = now
+            if (now.year, now.month) == (ended.year, ended.month):
+                continue
+            update(b["id"], status="retried")
+            new = _open(b["workflow"], b["task"], exists=bool(b.get("change")), change=b.get("change"),
+                        feedback=b.get("feedback"), attempt=b.get("attempt"), catalog=b.get("catalog"), prev=b["id"])
+            if new:
+                started.append(new)
+                log_run("builder", "retry", build=new, workflow=b["workflow"], why="new month")
             continue
         attempt = int(b.get("attempt") or 1)
         if attempt > len(RETRY_AFTER):
@@ -218,7 +234,8 @@ def retry_failed() -> list[str]:
             continue
         update(b["id"], status="retried")
         new = _open(b["workflow"], b["task"], exists=bool(b.get("change")), change=b.get("change"),
-                    feedback=b.get("feedback"), attempt=attempt + 1, catalog=b.get("catalog"), prev=b["id"])
+                    feedback=b.get("feedback"), attempt=attempt + 1, catalog=b.get("catalog"), prev=b["id"],
+                    failure=b.get("failure"))
         if new:
             started.append(new)
             log_run("builder", "retry", build=new, workflow=b["workflow"], attempt=attempt + 1)
@@ -340,6 +357,12 @@ def _feedback(b: dict) -> str:
 The owner looked at the practice run of your last version and asked for this: {b['feedback']}
 Your last version is already in the worktree (committed on the branch). Change it to do what they asked, keep
 what they didn't mention, test it again and commit.
+"""
+    if b.get("failure"):
+        out += f"""
+An earlier attempt at this didn't work. What went wrong:
+{b['failure']}
+Start from that: avoid what made it fail.
 """
     if b.get("fixes"):
         gaps = "\n".join(f"- {f}" for f in b["fixes"])
@@ -463,10 +486,9 @@ def _resume_prompt(b: dict, wt: str) -> str:
     owner's change, a retry): it already knows the business and its own code, so only what's new, and
     where its work is now."""
     name = b["workflow"]
-    failure = f"\nYour last attempt didn't finish. What went wrong:\n{b['failure']}\n" if b.get("failure") else ""
     return f"""Back to the same routine ({b['title']}). Your work so far is committed on branch build/{name}, now in a
 new worktree at {wt} (the old one is gone): from now on create and edit files ONLY there.
-{_feedback(b)}{failure}
+{_feedback(b)}
 {_accounts()}
 
 Same rules as before. With the new place:
@@ -476,6 +498,49 @@ Same rules as before. With the new place:
 - Answer as before: status built, needs_owner (with what, in plain words) or failed (with why); summary and needs
   for a busy owner who isn't technical.
 """
+
+
+# Why a build failed decides what happens next: a retry only when one can help. Jev first (decide.py),
+# so this costs next to nothing; the last option is the default when nothing can tell.
+TRIAGE_QUESTION = "A routine build failed. What would help?"
+TRIAGE = {
+    "owner": "it needs something only the owner can give: a login, a connected account, a choice about how the "
+             "business works, a clearer request",
+    "stop": "it can't be built this way at all: the service doesn't allow it, or the task is impossible",
+    "retry": "a passing problem (a timeout, the network, a site or service down for a while, running out of turns), "
+             "or a mistake in its own code that another attempt can fix",
+}
+TRIAGE_RULES = {"log in": "owner", "login": "owner", "sign in": "owner", "connect": "owner", "not allowed": "stop",
+                "doesn't allow": "stop", "impossible": "stop", "timeout": "retry", "timed out": "retry"}
+
+
+def _triage(b: dict, fields: dict, error: str = "") -> str:
+    """"retry", "owner" or "stop" for a failed build. Any trouble deciding means "retry", as before."""
+    context = "\n".join(x for x in (fields.get("summary"), fields.get("needs"),
+                                    (fields.get("test_output") or "")[-1500:], (error or "")[-1500:]) if x)
+    try:
+        choice = decide.decide(TRIAGE_QUESTION, TRIAGE, context=context, rules=TRIAGE_RULES).choice
+    except Exception:  # noqa: BLE001
+        return "retry"
+    return choice if choice in TRIAGE else "retry"
+
+
+def _settle_failure(b: dict, fields: dict, error: str = "", triage: str | None = None) -> tuple[str, dict]:
+    """The status a failed build ends in, and its fields: kept for a retry with what went wrong, handed
+    to the owner as their decision, or stopped and reported once."""
+    kind = triage or _triage(b, fields, error)
+    fields = {**fields, "triage": kind}
+    if kind == "owner":
+        fields["needs"] = fields.get("needs") or owner_words.say(fields.get("summary", ""), wait=True)
+        log_run("builder", "needs_owner", build=b["id"], workflow=b["workflow"], why="triage")
+        return "needs_owner", fields
+    if kind == "stop":
+        fields["reported"] = True
+        burst.report_problem("build_failed", b["workflow"], (fields.get("summary") or "")[-600:])
+        return "failed", fields
+    fields["failure"] = "\n".join(x for x in (fields.get("summary"), (fields.get("test_output") or "")[-1500:],
+                                              (error or "")[-800:]) if x)[-2500:]
+    return "failed", fields
 
 
 AUTO_FIX_ROUNDS = 2  # attempts that fix what a practice run's review found, before the owner sees it
@@ -503,7 +568,8 @@ def build(bid: str) -> None:
     try:
         check()
     except BudgetExceeded:
-        update(bid, status="failed", summary="This month's AI budget is used up, so I couldn't build it yet.", needs="")
+        update(bid, status="failed", summary="This month's AI budget is used up, so I couldn't build it yet.", needs="",
+               wait_month=True, triage="retry")
         return
 
     name = b["workflow"]
@@ -546,12 +612,14 @@ def build(bid: str) -> None:
     spent = {"cost_usd": round(cost, 6), "turns": turns, "session": out.session_id or ""}
     if not result:
         _cleanup(bid, name)
-        update(bid, status="failed", summary="Something went wrong while I was building it.", needs="",
-               error=out.error, **spent)
+        status, fields = _settle_failure(b, {"summary": "Something went wrong while I was building it.", "needs": "",
+                                             **spent}, error=out.error)
+        update(bid, status=status, error=out.error, **fields)
         return
 
     built = git("rev-list", "--count", f"HEAD..{branch}") not in ("", "0") and (wt / f"workflows/{name}.py").exists()
     status = result["status"] if (result["status"] != "built" or built) else "failed"
+    known = None  # a failure whose cause the engine knows, so nothing needs to tell it
     # Whatever it was told, a build that changes the engine's own code is never merged.
     touched = [f for f in git("diff", "--name-only", f"HEAD...{branch}", check_=False).splitlines() if f.startswith(ENGINE_CODE)]
     if status == "built" and touched:
@@ -559,6 +627,7 @@ def build(bid: str) -> None:
         result["summary"] = "I built it, but it needed changes I'm not allowed to make. I'll try another way."
         log_run("builder", "engine_code", build=bid, workflow=name, files=touched)
         burst.report_problem("engine_code", f"build of {name}", result.get("summary", ""), touched)
+        known = "retry"
     # Nor is a routine that doesn't meet the engine's standards (routine_check.py): it reads the code.
     problems = routine_check.check(wt / f"workflows/{name}.py") if status == "built" else []
     if problems:
@@ -566,9 +635,12 @@ def build(bid: str) -> None:
         result["summary"] = ("It works, but it keeps its data in ways the engine doesn't allow, so I didn't switch it on. "
                              "Try again and I'll fix that.")
         log_run("builder", "standards", build=bid, workflow=name, problems=problems)
+        known = "retry"
     fields = {"summary": result.get("summary", ""), "needs": owner_words.say(result.get("needs", ""), wait=True),
               "needs_connection": result.get("needs_connection", "") if result["status"] == "needs_owner" else "",
               "test_output": result.get("test_output", "")[-1500:], **spent}
+    if problems:
+        fields["test_output"] = "The engine's standards check found: " + "; ".join(problems)
 
     if status == "built":  # the owner sees a practice run before anything is switched on
         practice = _practice(bid, b, wt)
@@ -584,6 +656,8 @@ def build(bid: str) -> None:
             status = "failed"
             fields["summary"] = "It passed my tests, but its practice run didn't work. Try again and I'll look into why."
             fields["test_output"] = practice["output"]
+    if status == "failed":
+        status, fields = _settle_failure(b, fields, triage=known)
     _cleanup(bid, name, keep_branch=status == "ready")
     if b.get("base"):
         git("branch", "-D", b["base"], check_=False)
@@ -738,7 +812,7 @@ def retry(bid: str) -> str | None:
     b = load()[bid]
     update(bid, status="retried")
     return _open(b["workflow"], b["task"], exists=bool(b.get("change")), change=b.get("change"), feedback=b.get("feedback"),
-                 catalog=b.get("catalog"), prev=bid)
+                 catalog=b.get("catalog"), prev=bid, failure=b.get("failure"))
 
 
 def switch_on(bid: str) -> None:
