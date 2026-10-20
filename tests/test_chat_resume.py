@@ -16,7 +16,9 @@ from build_helpers import Company  # noqa: E402
 FAKE_CLAUDE = r"""#!/usr/bin/env python3
 import json, os, sys
 args = sys.argv[1:]
-prompt = args[args.index("-p") + 1] if "-p" in args and args.index("-p") + 1 < len(args) else sys.stdin.read()
+if "-p" not in args:  # `claude auth status` and the like: not a turn
+    sys.exit(0)
+prompt = args[args.index("-p") + 1] if args.index("-p") + 1 < len(args) else sys.stdin.read()
 with open(os.environ["FAKE_LOG"], "a") as f:
     f.write(json.dumps({"prompt": prompt, "resume": args[args.index("--resume") + 1] if "--resume" in args else None}) + "\n")
 print(json.dumps({"type": "result", "result": "Yes, those three goals are reasonable. I've set them up.",
