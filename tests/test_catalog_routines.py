@@ -248,7 +248,7 @@ class EmailFollowUpsTest(CatalogRoutineTest):
         self.assertEqual(lines[-1], "Wrote follow-ups on 1 email with no reply")
         draft = (self.co.root / "drafts/email_follow_ups-t1.md").read_text()
         self.assertIn("Hi Jane,", draft)
-        self.assertIn("\u201cQuote for 40 cakes\u201d".encode().decode("unicode_escape") if False else "Quote for 40 cakes", draft)
+        self.assertIn('about "Quote for 40 cakes"', draft)
         self.assertIn("Jane Doe <jane@client.test>", self.told()[0])
         self.assertEqual(self.gw.posts(), [])  # drafts only, unless the owner said to send
         self.assertEqual(self.run_it(dry=False)[-1], "No emails waiting on a reply")
