@@ -39,7 +39,7 @@ export function ArchiveTableButton({ table, setArchived }: { table: { id: string
   }
   return (
     <div className="w-full max-w-sm rounded-xl border border-line bg-surface p-4 text-sm sm:w-auto">
-      <p className="text-ink">Archive {table.name}?</p>
+      <p className="text-ink">Archive “{table.name}”?</p>
       <p className="mt-1 text-ink-2">It leaves your Library with everything in it kept. You can bring it back any time from the Library page.</p>
       {error && <p role="alert" className="mt-2 rounded-lg bg-rose-soft px-3 py-2 text-rose">{error}</p>}
       <div className="mt-3 flex gap-2">
