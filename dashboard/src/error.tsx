@@ -16,7 +16,7 @@ export function DashboardError({ error, retry }: { error: Error & { digest?: str
       </div>
       <h1 className="mt-5 font-display text-4xl tracking-tight">Can&apos;t load this right now</h1>
       <p className="mt-2 text-ink-2">
-        Your COO didn&apos;t answer in time. Your routines keep running on their own, so nothing is lost. Try again in a
+        Your business manager didn&apos;t answer in time. Your routines keep running on their own, so nothing is lost. Try again in a
         minute.
       </p>
       <button

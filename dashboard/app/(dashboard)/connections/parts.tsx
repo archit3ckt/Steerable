@@ -86,7 +86,7 @@ function NotListed({ asked }: { asked: string }) {
     <div role="status" className="rounded-3xl border border-dashed border-line p-5 text-sm text-ink-2">
       <p>
         <span className="font-medium text-ink">{asked}</span> isn&apos;t in the list. If it has a website you log in to,
-        that works too: you log in once, and your COO uses it from there. Or, if it has an MCP server, add it by its address below.
+        that works too: you log in once, and your business manager uses it from there. Or, if it has an MCP server, add it by its address below.
       </p>
       <a
         href={`/connections/website?${site ? `url=${encodeURIComponent(site)}` : `name=${encodeURIComponent(asked)}`}`}

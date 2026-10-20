@@ -12,7 +12,7 @@ export default function Page() {
     <div className="mx-auto max-w-2xl">
       <PageHeader
         title="Spaces"
-        subtitle="Separate spaces for your businesses or projects: each has its own COO, memory, chat, routines and connections, kept apart from the others. Switch between them from the menu next to the business name."
+        subtitle="Separate spaces for your businesses or projects: each has its own business manager, memory, chat, routines and connections, kept apart from the others. Switch between them from the menu next to the business name."
       />
       <Suspense fallback={<Skeleton className="h-96 rounded-3xl" />}>
         <Spaces />

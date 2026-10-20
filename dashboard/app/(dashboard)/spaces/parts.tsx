@@ -96,7 +96,7 @@ export function NewSpaceForm() {
         <input name="name" required maxLength={80} placeholder="Bloom & Root Events" className={`${inputClass} mt-2`} />
       </label>
       <label className="block">
-        <span className="text-sm font-medium">Its COO</span>
+        <span className="text-sm font-medium">Its business manager</span>
         <span className="mt-0.5 block text-sm text-ink-3">Each space has its own, who only knows this space.</span>
         <input name="coo" maxLength={40} defaultValue="Juno" className={`${inputClass} mt-2`} />
       </label>
@@ -115,7 +115,7 @@ export function NewSpaceForm() {
         Create the space
       </button>
       <p className="text-sm text-ink-3">
-        Its COO signs in to its AI on its own Connections page (your Claude account works for every space). Give your server about 150 MB of memory per space.
+        Its business manager signs in to its AI on its own Connections page (your Claude account works for every space). Give your server about 150 MB of memory per space.
       </p>
     </form>
   );

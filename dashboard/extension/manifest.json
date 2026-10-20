@@ -3,7 +3,7 @@
   "name": "Steerable: use my login",
   "short_name": "Steerable",
   "version": "0.2.0",
-  "description": "Lets your Steerable COO use a site with the login you already have in this browser. Only the sites you switch on, sent only to your own Steerable.",
+  "description": "Lets your Steerable business manager use a site with the login you already have in this browser. Only the sites you switch on, sent only to your own Steerable.",
   "icons": {
     "16": "icons/16.png",
     "48": "icons/48.png",

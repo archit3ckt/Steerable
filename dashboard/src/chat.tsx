@@ -112,7 +112,7 @@ export function Chat({
   const uploading = attached.some((a) => !a.file && !a.error);
   const ready = attached.filter((a) => a.file);
   const [pending, startTransition] = useTransition();
-  const [starting, startFresh] = useTransition(); // its own, so a fresh start doesn't look like the COO typing
+  const [starting, startFresh] = useTransition(); // its own, so a fresh start doesn't look like your business manager typing
   const [draft, setDraft] = useState("");
   const [error, setError] = useState<string | null>(null);
   // The message box grows with what's written, up to half the screen, then scrolls.

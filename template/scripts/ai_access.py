@@ -179,7 +179,7 @@ def finish_login(code: str) -> dict:
     if status()["claude"]["method"] != "account":
         log_run("ai_access", "error", step="code", output=ESCAPES.sub("", output)[-500:])
         raise AiError("That code didn't work. Start again, and paste the newest code Claude shows you.")
-    record_event("You signed the COO in with your Claude account.", who="CEO")
+    record_event("You signed your business manager in with your Claude account.", who="CEO")
     log_run("ai_access", "signed_in")
     return status()
 
@@ -192,7 +192,7 @@ def cancel_login() -> None:
 def sign_out() -> dict:
     subprocess.run(["claude", "auth", "logout"], capture_output=True, text=True, timeout=30)
     _forget_cached_auth()
-    record_event("You signed the COO out of your Claude account.", who="CEO")
+    record_event("You signed your business manager out of your Claude account.", who="CEO")
     log_run("ai_access", "signed_out")
     return status()
 

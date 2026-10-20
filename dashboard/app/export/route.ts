@@ -14,7 +14,7 @@ export async function GET() {
     headers: { Authorization: `Bearer ${agentToken(space) ?? ""}` },
     cache: "no-store",
   }).catch(() => null);
-  if (!res?.ok || !res.body) return new Response("Your COO didn't answer. Try again in a minute.", { status: 502 });
+  if (!res?.ok || !res.body) return new Response("Your business manager didn't answer. Try again in a minute.", { status: 502 });
   const day = new Date().toISOString().slice(0, 10);
   return new Response(res.body, {
     headers: { "Content-Type": "application/gzip", "Content-Disposition": `attachment; filename="${space.id === "main" ? "company" : space.id}-${day}.tar.gz"` },

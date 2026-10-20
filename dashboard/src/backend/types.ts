@@ -90,9 +90,9 @@ export type Actor = "coo" | "you" | "autopilot";
 
 export type TimelineKind =
   | "done" // work completed
-  | "fixed" // a problem the COO fixed on its own
+  | "fixed" // a problem your business manager fixed on its own
   | "decided" // a decision the owner made
-  | "learned" // the COO got better at something
+  | "learned" // your business manager got better at something
   | "milestone" // a goal or project moved forward
   | "heads-up"; // something worth knowing, no action needed
 

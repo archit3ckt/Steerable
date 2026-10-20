@@ -141,7 +141,7 @@ async function Hero({ host, notice }: { host: DashboardHost; notice?: ReactNode 
         <div className="flex items-start gap-4">
           <CooAvatar name={company.cooName} size="lg" />
           <div className="min-w-0">
-            <p className="text-sm text-ink-3">{company.cooName}, your COO</p>
+            <p className="text-sm text-ink-3">{company.cooName}, your business manager</p>
             <p className="mt-1 text-lg leading-snug font-medium text-balance sm:text-xl">{brief.headline}</p>
             <ul className="mt-3 space-y-1.5 text-ink-2">
               {brief.points.map((p) => (

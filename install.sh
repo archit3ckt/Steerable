@@ -53,7 +53,7 @@ ok "Command installed: $BIN_DIR/steerable"
 if command -v claude >/dev/null; then
   ok "Claude Code found"
 else
-  echo -e "${Y}!${N} Claude Code isn't installed yet. Your COO runs on it: ${B}https://claude.com/claude-code${N}"
+  echo -e "${Y}!${N} Claude Code isn't installed yet. Your business manager runs on it: ${B}https://claude.com/claude-code${N}"
 fi
 
 echo

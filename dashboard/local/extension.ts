@@ -30,7 +30,7 @@ export async function engine(path: string, body: unknown): Promise<Response> {
     if (res?.ok) return reply(path, res, space);
     first ??= { res, space };
   }
-  if (!first?.res) return Response.json({ error: `Can't reach ${first?.space.cooName ?? "your COO"} right now. Try again in a minute.` }, { status: 502 });
+  if (!first?.res) return Response.json({ error: `Can't reach ${first?.space.cooName ?? "your business manager"} right now. Try again in a minute.` }, { status: 502 });
   return reply(path, first.res, first.space);
 }
 

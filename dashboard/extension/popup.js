@@ -108,7 +108,7 @@ function siteRow(host, entry, coo) {
 
 async function paired({ base, sites }) {
   const { coo: stored } = await chrome.storage.local.get("coo");
-  const coo = stored || "Your COO";
+  const coo = stored || "Your business manager";
   const tab = await activeTab();
   const host = tab?.url ? siteOf(tab.url) : null;
   const message = el("p", { className: "error small" });

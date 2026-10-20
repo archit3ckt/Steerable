@@ -151,7 +151,7 @@ def _today_count() -> int:
     return n
 
 
-def start(message: str, entry: dict, said: str, kind: str, coo: str = "your COO") -> dict:
+def start(message: str, entry: dict, said: str, kind: str, coo: str = "your business manager") -> dict:
     """Start testing a reply (a chat log entry) in the background; the app polls view(). A finished test
     is returned as it is, unless its plan has changed since."""
     if kind not in KINDS:

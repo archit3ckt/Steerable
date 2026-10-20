@@ -44,7 +44,7 @@ async function Conversation({ host, searchParams, notice }: { host: DashboardHos
     <>
       <PageHeader
         title={`Talk to ${company.cooName}`}
-        subtitle={q ? undefined : "Ask anything about the business, or tell your COO what to do. Plain words are fine."}
+        subtitle={q ? undefined : "Ask anything about the business, or tell your business manager what to do. Plain words are fine."}
       >
         <SearchBox q={q} />
       </PageHeader>

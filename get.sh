@@ -41,7 +41,7 @@ ok()   { printf "${G}✓${N} %s\n" "$1"; }
 fail() { printf "${R}✗${N} %s\n" "$1" >&2; [ -n "${2:-}" ] && printf "  ${D}%s${N}\n" "$2" >&2; exit 1; }
 
 printf "${B}${C}◆ Steerable${N}${D}  with Docker${N}\n"
-printf "${D}Your COO acts in your name, and what it does is your responsibility: see \"Your responsibility\" in the README.${N}\n\n"
+printf "${D}Your business manager acts in your name, and what it does is your responsibility: see \"Your responsibility\" in the README.${N}\n\n"
 
 command -v docker >/dev/null || fail "Docker is missing" "Install Docker Desktop (Mac, Windows) or Docker Engine (Linux): https://docs.docker.com/get-docker/"
 docker compose version >/dev/null 2>&1 || fail "Docker Compose v2 is missing" "It comes with Docker Desktop; on Linux install the docker-compose-plugin package."
@@ -95,7 +95,7 @@ else
   ask COMPANY_NAME "Your business's name" ""
   [ -n "$COMPANY_NAME" ] || fail "Your business needs a name" "Run this again, or set COMPANY_NAME."
   ask OWNER_NAME "Your first name" ""
-  ask COO_NAME "What should your COO be called" "Juno"
+  ask COO_NAME "What should your business manager be called" "Juno"
   ask_secret DASHBOARD_PASSWORD "A passphrase for your dashboard (8+ characters)"
   [ "${#DASHBOARD_PASSWORD}" -ge 8 ] 2>/dev/null || fail "The passphrase needs 8 or more characters" "Run this again, or set DASHBOARD_PASSWORD."
   ask_secret ANTHROPIC_API_KEY "Anthropic API key (Enter to sign in with your Claude account instead)"
@@ -157,7 +157,7 @@ echo
 ok "Steerable is running"
 printf "\n  Open ${B}http://localhost:%s${N} and sign in with your passphrase.\n" "$port"
 if ! grep -q "^ANTHROPIC_API_KEY='\?[^' ]" .env; then
-  printf "  ${Y}!${N} No API key: sign your COO in to Claude once:\n"
+  printf "  ${Y}!${N} No API key: sign your business manager in to Claude once:\n"
   printf "    ${B}cd %s && docker compose exec -it %s claude${N}   then type /login\n" "$DIR" "$ENGINE"
 fi
 printf "\n  ${D}Update:  cd %s && docker compose pull && docker compose up -d${N}\n" "$DIR"

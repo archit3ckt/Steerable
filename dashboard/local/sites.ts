@@ -20,7 +20,7 @@ export async function forward(method: "GET" | "POST", path: string, body?: unkno
     cache: "no-store",
     signal: AbortSignal.timeout(90_000),
   }).catch(() => null);
-  if (!res) return Response.json({ error: "Your COO didn't answer. Try again in a minute." }, { status: 502 });
+  if (!res) return Response.json({ error: "Your business manager didn't answer. Try again in a minute." }, { status: 502 });
   return new Response(res.body, { status: res.status, headers: { "Content-Type": res.headers.get("Content-Type") ?? "application/json", "Cache-Control": "no-store" } });
 }
 
