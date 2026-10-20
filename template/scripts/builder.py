@@ -280,6 +280,59 @@ def _accounts() -> str:
     return "\n".join(lines)
 
 
+MEMORY_CUT = 4_000  # characters of each memory file in the brief; the newest part wins
+BOARD_CUT = 3_000
+
+
+def _cut(text: str, limit: int) -> str:
+    text = text.strip()
+    return text if len(text) <= limit else "(earlier part left out)\n" + text[-limit:]
+
+
+def _brief() -> str:
+    """What a build would otherwise spend its first turns reading, in one block: every turn resends the
+    whole conversation, so each file it doesn't have to open saves on every turn after."""
+    import ast
+    import contextlib
+    import io
+
+    parts = ["Everything below is what you'd look up in those files, as they are now."]
+    for rel in ("memory/company.md", "memory/processes.md", "memory/decisions.md"):
+        path = ROOT / rel
+        text = path.read_text(errors="replace") if path.exists() else ""
+        parts.append(f"### {rel}\n{_cut(text, MEMORY_CUT) or '(empty)'}")
+    board = io.StringIO()
+    try:
+        import ops_db
+        with contextlib.redirect_stdout(board), ops_db.connect() as con:
+            ops_db.show(con)
+    except Exception:  # noqa: BLE001  a missing or new board isn't a reason not to build
+        pass
+    parts.append(f"### The board (scripts/ops_db.py --show)\n{_cut(board.getvalue(), BOARD_CUT) or '(empty)'}")
+    try:
+        import library
+        tables = library.tables()
+    except Exception:  # noqa: BLE001
+        tables = []
+    parts.append("### Library tables (library.table(name) opens one; add columns with columns=...)\n" + (
+        "\n".join(f"- {t['name']} ({t['rows']} rows): {', '.join(t['columns'])}" for t in tables) or "(none yet)"))
+    routines = []
+    for path in sorted(WORKFLOWS.glob("*.py")):
+        if path.name.startswith("_"):
+            continue
+        try:
+            doc = ast.get_docstring(ast.parse(path.read_text(errors="replace"))) or ""
+        except SyntaxError:
+            doc = ""
+        routines.append(f"- {path.stem}: {doc.strip().splitlines()[0] if doc.strip() else '(no description)'}")
+    parts.append("### The company's other routines (workflows/)\n" + ("\n".join(routines) or "(none yet)"))
+    template = WORKFLOWS / "_template.py"
+    parts.append(f"### workflows/_template.py\n```python\n{template.read_text() if template.exists() else ''}\n```")
+    parts.append("This is everything you'd look up in those files: don't read them again. Read other files only "
+                 "when the task needs them (another routine's code you mean to reuse, an engine script's usage).")
+    return "\n\n".join(parts)
+
+
 def _feedback(b: dict) -> str:
     out = ""
     if b.get("feedback"):
@@ -310,6 +363,8 @@ Task line: {b['task']}
 The change: {b['change']}
 {_feedback(b)}
 {_accounts()}
+
+{_brief()}
 
 Its code is workflows/{name}.py (and its flow chart workflows/{name}.flow.json) in the worktree below. Make the
 change and keep everything else it does working. It must meet every point of the Workflow standard in CLAUDE.md,
@@ -345,8 +400,10 @@ Task line: {task}
 {_accounts()}
 
 Build it as workflows/{name}.py, starting from workflows/_template.py and meeting every point of
-the Workflow standard in CLAUDE.md. Read memory/ (company.md, processes.md, decisions.md) and the
-mission board (`.venv/bin/python scripts/ops_db.py --show`) to understand the business.
+the Workflow standard in CLAUDE.md. The business, its board, its library and the template are in the
+brief below.
+
+{_brief()}
 
 How to work:
 - A git worktree for the build is at: {wt} (branch build/{name}). Create and edit files ONLY inside
