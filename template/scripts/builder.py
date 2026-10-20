@@ -17,6 +17,7 @@ incident starts a fix:
 
     python scripts/builder.py build <id>   # used internally, runs in the background
     python scripts/builder.py list
+    python scripts/builder.py costs        # what each routine cost to build, every attempt counted
 """
 import fcntl
 from datetime import datetime, timezone
@@ -165,7 +166,8 @@ def recover_stale() -> list[str]:
             live_path(b["id"]).unlink(missing_ok=True)
             git("worktree", "remove", "--force", str(WORKTREES / b["id"]), check_=False)
             new = _open(b["workflow"], b["task"], exists=changing, change=b.get("change"),
-                        feedback=b.get("feedback"), base=b.get("base"), fixes=b.get("fixes"), rounds=b.get("rounds"))
+                        feedback=b.get("feedback"), base=b.get("base"), fixes=b.get("fixes"), rounds=b.get("rounds"),
+                        catalog=b.get("catalog"), prev=b["id"])
             if new:
                 update(new, resumed=True)
                 done.append(f"{b['id']}: started again as {new}")
@@ -216,7 +218,7 @@ def retry_failed() -> list[str]:
             continue
         update(b["id"], status="retried")
         new = _open(b["workflow"], b["task"], exists=bool(b.get("change")), change=b.get("change"),
-                    feedback=b.get("feedback"), attempt=attempt + 1)
+                    feedback=b.get("feedback"), attempt=attempt + 1, catalog=b.get("catalog"), prev=b["id"])
         if new:
             started.append(new)
             log_run("builder", "retry", build=new, workflow=b["workflow"], attempt=attempt + 1)
@@ -415,7 +417,7 @@ def _auto_fix(bid: str, b: dict, fields: dict, review: dict, rounds: int, cost: 
     live_path(bid).unlink(missing_ok=True)
     log_run("builder", "auto_fix", cost_usd=cost, build=bid, workflow=name, round=rounds + 1, fixes=review["fixes"])
     _open(name, b["task"], exists=bool(b.get("change")), change=b.get("change"), feedback=b.get("feedback"),
-          fixes=review["fixes"], base=base, rounds=rounds + 1)
+          fixes=review["fixes"], base=base, rounds=rounds + 1, catalog=b.get("catalog"), prev=bid)
 
 
 def build(bid: str) -> None:
@@ -448,14 +450,15 @@ def build(bid: str) -> None:
         deny=["Read(./.env)", f"Read(/{wt}/.env)", "Read(./.cache/**)", f"Read(/{wt}/.cache/**)"],
         timeout=2400, live=live_path(bid))
     result = out.structured
+    cost = out.cost
+    record("builder", cost, model=out.model, note=bid)
+    spent = {"cost_usd": cost, "turns": int(out.raw.get("num_turns") or 0), "session": out.session_id or ""}
     if not result:
         _cleanup(bid, name)
         update(bid, status="failed", summary="Something went wrong while I was building it.", needs="",
-               error=out.error)
+               error=out.error, **spent)
         return
 
-    cost = out.cost
-    record("builder", cost, model=out.model, note=bid)
     built = git("rev-list", "--count", f"HEAD..{branch}") not in ("", "0") and (wt / f"workflows/{name}.py").exists()
     status = result["status"] if (result["status"] != "built" or built) else "failed"
     # Whatever it was told, a build that changes the engine's own code is never merged.
@@ -474,7 +477,7 @@ def build(bid: str) -> None:
         log_run("builder", "standards", build=bid, workflow=name, problems=problems)
     fields = {"summary": result.get("summary", ""), "needs": owner_words.say(result.get("needs", ""), wait=True),
               "needs_connection": result.get("needs_connection", "") if result["status"] == "needs_owner" else "",
-              "test_output": result.get("test_output", "")[-1500:], "cost_usd": cost}
+              "test_output": result.get("test_output", "")[-1500:], **spent}
 
     if status == "built":  # the owner sees a practice run before anything is switched on
         practice = _practice(bid, b, wt)
@@ -621,13 +624,30 @@ def _cleanup(bid: str, name: str, keep_branch: bool = False) -> None:
         git("branch", "-D", f"build/{name}", check_=False)
 
 
+def costs() -> list[dict]:
+    """What building each routine has cost, every attempt counted (fixes, the owner's changes, retries),
+    newest first: {"workflow", "builds", "cost_usd", "turns", "catalog"}."""
+    out: dict[str, dict] = {}
+    for b in sorted(load().values(), key=lambda b: b.get("opened") or ""):
+        c = out.setdefault(b["workflow"], {"workflow": b["workflow"], "builds": 0, "cost_usd": 0.0, "turns": 0,
+                                           "catalog": "", "last": ""})
+        c["builds"] += 1
+        c["cost_usd"] = round(c["cost_usd"] + float(b.get("cost_usd") or 0), 4)
+        c["turns"] += int(b.get("turns") or 0)
+        c["catalog"] = b.get("catalog") or c["catalog"]
+        c["last"] = b.get("opened") or c["last"]
+    return [{k: v for k, v in c.items() if k != "last"}
+            for c in sorted(out.values(), key=lambda c: c["last"], reverse=True)]
+
+
 # ---------- owner actions (agent API) ----------
 
 def retry(bid: str) -> str | None:
     """Close this attempt and start a new one."""
     b = load()[bid]
     update(bid, status="retried")
-    return _open(b["workflow"], b["task"], exists=bool(b.get("change")), change=b.get("change"), feedback=b.get("feedback"))
+    return _open(b["workflow"], b["task"], exists=bool(b.get("change")), change=b.get("change"), feedback=b.get("feedback"),
+                 catalog=b.get("catalog"), prev=bid)
 
 
 def switch_on(bid: str) -> None:
@@ -664,7 +684,8 @@ def revise(bid: str, note: str) -> str | None:
     git("branch", "-D", base, check_=False)
     git("branch", "-m", branch, base)
     update(bid, status="revised")
-    bid2 = _open(b["workflow"], b["task"], exists=bool(b.get("change")), change=b.get("change"), feedback=note, base=base)
+    bid2 = _open(b["workflow"], b["task"], exists=bool(b.get("change")), change=b.get("change"), feedback=note, base=base,
+                 catalog=b.get("catalog"), prev=bid)
     if bid2:
         record_event(f"You asked for a change to {b['title']}: {note}", who="CEO", workflow=b["workflow"])
     return bid2
@@ -700,6 +721,10 @@ if __name__ == "__main__":
             _cleanup(bid, load()[bid]["workflow"])
             log_run("builder", "error", build=bid, error=repr(e))
             raise
+    elif sys.argv[1:2] == ["costs"]:
+        for c in costs():
+            print(f"{c['workflow']}: ${c['cost_usd']:.2f} over {c['builds']} attempt(s), {c['turns']} turns"
+                  + (f", from {c['catalog']}" if c["catalog"] else ""))
     elif sys.argv[1:2] == ["list"]:
         for b in load().values():
             print(b["id"], b["status"], b["workflow"], b.get("summary", "")[:70])
