@@ -34,6 +34,8 @@ CLI, for the COO in the chat:
     .venv/bin/python scripts/library.py columns "Leads" --add "Next step:date"
     .venv/bin/python scripts/library.py view "Leads" "Pipeline" --type kanban --by Status
     .venv/bin/python scripts/library.py view "Leads" "Follow-ups" --type calendar --by "Next step"
+    .venv/bin/python scripts/library.py archive-table "Old leads"     # only when the owner asks; restore-table brings it back
+    .venv/bin/python scripts/library.py tables --archived
 """
 import argparse
 import contextvars
@@ -309,10 +311,11 @@ def _history(con, table_id: str, row_id: str | None, what: str, kind: str | None
                  json.dumps(before) if before else None, json.dumps(after) if after else None))
 
 
-def tables() -> list[dict]:
+def tables(archived: bool = False) -> list[dict]:
+    """The library's tables, most recently changed first; with archived=True, the archived ones instead."""
     with connect() as con:
         rows = con.execute("""SELECT t.*, (SELECT COUNT(*) FROM rows r WHERE r.table_id = t.id AND r.archived = 0) AS n
-                              FROM tables t WHERE t.archived = 0 ORDER BY t.updated DESC""").fetchall()
+                              FROM tables t WHERE t.archived = ? ORDER BY t.updated DESC""", (int(archived),)).fetchall()
         return [{"id": t["id"], "name": t["name"], "description": t["description"], "rows": t["n"], "updated": t["updated"],
                  "columns": [c["name"] for c in _columns(con, t["id"])]} for t in rows]
 
@@ -340,13 +343,37 @@ def search(words: str, table_name: str | None = None, limit: int = 10) -> list[d
     return sorted(out, key=lambda x: -x["total"]) + named
 
 
+def _set_table_archived(ref: str, archived: bool) -> dict:
+    with connect() as con:
+        t = con.execute("SELECT * FROM tables WHERE id = ? OR name = ?", (ref, ref)).fetchone()
+        if not t:
+            raise LibraryError(f"There's no table called {ref}.")
+        if bool(t["archived"]) == archived:
+            raise LibraryError("That table is already archived." if archived else "That table isn't archived.")
+        con.execute("UPDATE tables SET archived = ?, updated = ? WHERE id = ?", (int(archived), now_iso(), t["id"]))
+        _history(con, t["id"], None, "Archived the table" if archived else "Brought the table back")
+        return {"id": t["id"], "name": t["name"]}
+
+
+def archive_table(ref: str) -> dict:
+    """Take a whole table out of the Library (by id or name): nothing in it is deleted, and it can be
+    brought back. A routine that still keeps records there goes on doing so; the table stays archived."""
+    return _set_table_archived(ref, True)
+
+
+def restore_table(ref: str) -> dict:
+    return _set_table_archived(ref, False)
+
+
 def table(name: str, columns: str = "", description: str = "") -> "Table":
-    """The table with this name, created if it doesn't exist; any columns it lacks are added."""
+    """The table with this name, created if it doesn't exist; any columns it lacks are added. An archived
+    table of that name is used as it is (still archived): archiving a table never breaks what writes to it."""
     if not name.strip() or len(name) > 80:
         raise LibraryError("Give the table a name, up to 80 characters.")
     wanted = parse_columns(columns)
     with connect() as con:
-        t = _table_row(con, name.strip())
+        t = _table_row(con, name.strip()) or con.execute(
+            "SELECT * FROM tables WHERE name = ? AND archived = 1", (name.strip(),)).fetchone()
         if not t:
             if not wanted:
                 raise LibraryError(f"There's no table called {name}. Create it with its columns.")
@@ -935,7 +962,10 @@ def _pairs(items: list[str]) -> dict:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = parser.add_subparsers(dest="cmd", required=True)
-    sub.add_parser("tables")
+    ts = sub.add_parser("tables")
+    ts.add_argument("--archived", action="store_true")
+    for name in ("archive-table", "restore-table"):
+        sub.add_parser(name).add_argument("table")
     c = sub.add_parser("create")
     c.add_argument("name")
     c.add_argument("--columns", required=True)
@@ -984,7 +1014,11 @@ def main() -> int:
     args = parser.parse_args()
     try:
         if args.cmd == "tables":
-            print(json.dumps(tables(), indent=1, ensure_ascii=False))
+            print(json.dumps(tables(archived=args.archived), indent=1, ensure_ascii=False))
+        elif args.cmd in ("archive-table", "restore-table"):
+            t = (archive_table if args.cmd == "archive-table" else restore_table)(args.table)
+            print(f"Archived {t['name']}. Nothing in it was deleted; restore-table brings it back."
+                  if args.cmd == "archive-table" else f"{t['name']} is back in the Library.")
         elif args.cmd == "create":
             t = table(args.name, args.columns, args.description)
             print(f"The table {t.name} is ready, with columns: {', '.join(x['name'] for x in t.columns)}. Tell the owner in a sentence.")

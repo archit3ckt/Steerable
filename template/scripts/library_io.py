@@ -172,7 +172,7 @@ def import_sheet(name: str, data: bytes, into: str | None = None, title: str | N
         if extra:
             t = library.table(t.name, ", ".join(extra))
     else:
-        existing = {x["name"].lower() for x in library.tables()}
+        existing = {x["name"].lower() for x in library.tables() + library.tables(archived=True)}
         base = (title or Path(name).stem or "Imported").strip()[:70] or "Imported"
         table_name, n = base, 2
         while table_name.lower() in existing:

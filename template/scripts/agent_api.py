@@ -47,7 +47,8 @@ Every request except GET /health needs `Authorization: Bearer <AGENT_API_TOKEN>`
     POST /v1/ai/jev  /v1/ai/jev/remove  the owner's Jev key, checked before it's kept
     POST /v1/files?name=<name>         a file attached in the chat (raw bytes, up to 20 MB) -> {id, name, kind, size}
     GET  /v1/files/<id>                that file (pictures inline, the rest as downloads)
-    GET  /v1/library                   the library's tables (records the owner looks up: library.py)
+    GET  /v1/library                   the library's tables (records the owner looks up: library.py); ?archived=1 the archived ones
+    POST /v1/library/tables/<id>/archive, .../restore   take a whole table out of the Library, or bring it back
     GET  /v1/library/tables/<id>       a table: columns and a page of rows (?q&sort&dir&where.<column>&archived&offset&limit)
     POST /v1/library/tables/<id>/rows  {cells, key?} add a row; .../rows/<row> {cells} change it; .../archive, .../restore
     GET  /v1/library/tables/<id>/rows/<row>   a row and its history
@@ -2212,7 +2213,9 @@ ROUTES = [
     ("POST", r"/v1/extension/logins", lambda q, b: extension_login(b)),
     ("POST", r"/v1/extension/status", lambda q, b: extension_sites(b)),
     ("GET", r"/v1/telegram", lambda q, b: telegram.status()),
-    ("GET", r"/v1/library", lambda q, b: library.tables()),
+    ("GET", r"/v1/library", lambda q, b: library.tables(archived=(q.get("archived") or [""])[0] == "1")),
+    ("POST", r"/v1/library/tables/(?P<tid>[^/]+)/(?P<action>archive|restore)",
+     lambda q, b, tid, action: _lib(lambda: (library.archive_table if action == "archive" else library.restore_table)(tid))),
     ("GET", r"/v1/dashboards", lambda q, b: dashboards.dashboards()),
     ("POST", r"/v1/dashboards", lambda q, b: _dash(dashboards.create, body_field(b, "name", str), "", "you")),
     ("GET", r"/v1/dashboards/asks", lambda q, b: dashboards.asks()),
