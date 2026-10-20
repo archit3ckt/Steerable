@@ -66,7 +66,7 @@ class CatalogRoutingTest(unittest.TestCase):
         demo.mkdir(parents=True)
         (demo / "routine.py").write_text(DEMO_ROUTINE)
         (demo / "routine.flow.json").write_text(json.dumps({"steps": [
-            {"kind": "trigger", "label": "Every Monday"}, {"kind": "check", "label": "Find overdue invoices"}]}))
+            {"kind": "trigger", "label": "Every Monday"}, {"kind": "read", "label": "Find overdue invoices"}]}))
         (demo / "about.json").write_text(json.dumps({
             "title": "Overdue invoice reminders", "description": "Remind clients about invoices past their due date",
             "services": ["stripe"], "settings": {"DAYS_OVERDUE": "how many days past due before a reminder"}}))

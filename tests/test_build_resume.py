@@ -31,7 +31,7 @@ if kind == "build":
     wt = add_dirs[0]
     open(os.path.join(wt, "workflows/count_new.py"), "w").write(os.environ["FAKE_ROUTINE"])
     open(os.path.join(wt, "workflows/count_new.flow.json"), "w").write(json.dumps({"steps": [
-        {"kind": "trigger", "label": "Every day"}, {"kind": "check", "label": "Count new things"}]}))
+        {"kind": "trigger", "label": "Every day"}, {"kind": "read", "label": "Count new things"}]}))
     subprocess.run(["git", "-C", wt, "add", "workflows/"], check=True)
     subprocess.run(["git", "-C", wt, "commit", "-qm", "Build count_new", "--allow-empty"], check=True)
     out = {"status": "built", "summary": "Counts new things every day.", "needs": "", "needs_connection": "",
