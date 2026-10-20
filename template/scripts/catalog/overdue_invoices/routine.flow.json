@@ -1,0 +1,7 @@
+{"steps": [
+  {"kind": "trigger", "label": "Every week"},
+  {"kind": "read", "label": "Find invoices past their due date", "service": "stripe"},
+  {"kind": "send", "label": "Send each client Stripe's reminder", "service": "stripe", "detail": "At most once a week per invoice, and three times in all"},
+  {"kind": "read", "label": "Note who paid after a reminder", "service": "stripe"},
+  {"kind": "send", "label": "Tell you who was reminded"}
+]}

@@ -1,0 +1,11 @@
+{
+  "title": "Overdue invoice reminders",
+  "description": "Remind the business's clients to pay their Stripe invoices that are past their due date",
+  "services": ["stripe"],
+  "settings": {
+    "DAYS_OVERDUE": "days past the due date before the first reminder",
+    "REMIND_EVERY_DAYS": "days between reminders for the same invoice",
+    "MAX_REMINDERS": "how many reminders one invoice gets in all",
+    "MIN_AMOUNT": "invoices with less than this still due are skipped (in their currency)"
+  }
+}
