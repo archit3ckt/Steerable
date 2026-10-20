@@ -1,0 +1,12 @@
+{
+  "title": "Email follow-ups",
+  "description": "Find emails the owner sent from Gmail that got no reply after a few days, and write a short follow-up for each",
+  "services": ["google"],
+  "settings": {
+    "WAIT_DAYS": "days without a reply before following up",
+    "LOOK_BACK_DAYS": "how far back to look at sent emails",
+    "SKIP": "addresses or domains never followed up (the owner's colleagues, suppliers who never answer...)",
+    "MESSAGE": "the follow-up, in the owner's voice; {name} and {subject} are filled in",
+    "SEND": "send follow-ups (true) or keep them as drafts for the owner to send (false)"
+  }
+}

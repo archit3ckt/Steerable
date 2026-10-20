@@ -1,0 +1,8 @@
+{"steps": [
+  {"kind": "trigger", "label": "Every weekday morning"},
+  {"kind": "read", "label": "Find emails you sent that haven't had a reply", "service": "google"},
+  {"kind": "write", "label": "Write a short follow-up for each"},
+  {"kind": "send", "label": "Send them, or keep them as drafts for you", "service": "google", "detail": "Drafts unless you've said to send them"},
+  {"kind": "read", "label": "Note who has replied since", "service": "google"},
+  {"kind": "send", "label": "Tell you who's waiting on a reply"}
+]}

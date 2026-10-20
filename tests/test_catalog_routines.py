@@ -209,5 +209,63 @@ class WeeklyNumbersTest(CatalogRoutineTest):
         self.assertTrue((self.co.root / "files/reports/weekly_numbers.md").exists())
 
 
+def mail(mid, sender, to, subject, days_ago, sent):
+    return {"id": mid, "labelIds": ["SENT"] if sent else ["INBOX"], "internalDate": str(int((time.time() - days_ago * DAY) * 1000)),
+            "payload": {"headers": [{"name": "From", "value": sender}, {"name": "To", "value": to},
+                                    {"name": "Subject", "value": subject}, {"name": "Message-ID", "value": f"<{mid}@mail>"}]}}
+
+
+class EmailFollowUpsTest(CatalogRoutineTest):
+    entry = "email_follow_ups"
+    task = "Follow up on emails that got no reply  @workflow:email_follow_ups  every:weekdays"
+    me = "Sam <sam@shop.test>"
+
+    def setUp(self):
+        super().setUp()
+        self.threads = {
+            "t1": [mail("m1", self.me, "Jane Doe <jane@client.test>", "Quote for 40 cakes", 5, True)],  # waiting
+            "t2": [mail("m2", self.me, "bob@client.test", "Order", 6, True),
+                   mail("m3", "bob@client.test", self.me, "Re: Order", 4, False)],  # Bob answered
+            "t3": [mail("m4", self.me, "noreply@service.test", "Account", 6, True)],  # never followed up
+            "t4": [mail("m5", self.me, "amy@client.test", "Hello", 1, True)],  # too recent
+        }
+        gmail = "/x/google/gmail.googleapis.com/gmail/v1/users/me"
+        routes = {("GET", f"{gmail}/profile"): {"emailAddress": "sam@shop.test"},
+                  ("GET", f"{gmail}/threads"): lambda q, b: {"threads": [{"id": t} for t in self.threads]},
+                  ("POST", f"{gmail}/messages/send"): lambda q, b: {"id": "sent1", "threadId": json.loads(b)["threadId"]}}
+        for tid in self.threads:
+            routes[("GET", f"{gmail}/threads/{tid}")] = (lambda tid: lambda q, b: {"id": tid, "messages": self.threads[tid]})(tid)
+        self.gw = FakeGateway(routes)
+
+    def test_practice_run_writes_nothing(self):
+        lines = self.run_it(dry=True)
+        self.assertEqual(lines[-1], "Would follow up on 1 email with no reply")
+        self.assertEqual(self.gw.posts(), [])
+        self.assertFalse((self.co.root / "drafts").exists())
+
+    def test_drafts_once_then_notes_the_reply(self):
+        lines = self.run_it(dry=False)
+        self.assertEqual(lines[-1], "Wrote follow-ups on 1 email with no reply")
+        draft = (self.co.root / "drafts/email_follow_ups-t1.md").read_text()
+        self.assertIn("Hi Jane,", draft)
+        self.assertIn("\u201cQuote for 40 cakes\u201d".encode().decode("unicode_escape") if False else "Quote for 40 cakes", draft)
+        self.assertIn("Jane Doe <jane@client.test>", self.told()[0])
+        self.assertEqual(self.gw.posts(), [])  # drafts only, unless the owner said to send
+        self.assertEqual(self.run_it(dry=False)[-1], "No emails waiting on a reply")
+        self.threads["t1"].append(mail("m9", "jane@client.test", self.me, "Re: Quote for 40 cakes", 0, False))
+        self.run_it(dry=False)
+        self.assertEqual([r["Status"] for r in self.rows("Follow-ups")], ["Replied"])
+        self.assertIn("Replied since: Jane Doe <jane@client.test>.", self.told()[-1])
+
+    def test_sends_when_the_owner_said_so(self):
+        path = self.co.root / "workflows/email_follow_ups.py"
+        path.write_text(path.read_text().replace('"SEND": False', '"SEND": True'))
+        lines = self.run_it(dry=False)
+        self.assertEqual(lines[-1], "Followed up on 1 email with no reply")
+        [post] = self.gw.posts()
+        self.assertTrue(post["path"].endswith("/messages/send"))
+        self.assertEqual([r["Status"] for r in self.rows("Follow-ups")], ["Sent"])
+
+
 if __name__ == "__main__":
     unittest.main()
