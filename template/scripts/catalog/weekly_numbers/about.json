@@ -1,0 +1,9 @@
+{
+  "title": "Weekly numbers",
+  "description": "Every week, tell the owner last week's sales, refunds and new customers from Stripe, compared with the week before",
+  "services": ["stripe"],
+  "settings": {
+    "WEEK_STARTS": "the day a week starts on: monday or sunday",
+    "SEND_TO_OWNER": "whether to message the owner the numbers (otherwise they're only kept in the library and the report)"
+  }
+}

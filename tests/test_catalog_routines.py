@@ -99,7 +99,8 @@ class CatalogRoutineTest(unittest.TestCase):
         return [json.loads(line)["text"] for line in chat.read_text().splitlines()] if chat.exists() else []
 
     def rows(self, table: str) -> list[dict]:
-        code = f"import json, library; print(json.dumps([r['cells'] for r in library.table({table!r}).rows()]))"
+        code = (f"import json, library\nthere = {table!r} in [t['name'] for t in library.tables()]\n"
+                f"print(json.dumps([r['cells'] for r in library.table({table!r}).rows()] if there else []))")
         return self.co.py(code)
 
 
@@ -156,6 +157,56 @@ class OverdueInvoicesTest(CatalogRoutineTest):
         self.assertEqual(lines[-1], "Found 2 overdue invoices, but Stripe didn't let me send reminders")
         self.assertIn("Invoices: Write", self.told()[0])
         self.assertEqual({r["Status"] for r in self.rows("Invoice reminders")}, {"Not sent"})
+
+
+class WeeklyNumbersTest(CatalogRoutineTest):
+    entry = "weekly_numbers"
+    task = "Send me last week's numbers  @workflow:weekly_numbers  every:weekly"
+
+    def setUp(self):
+        super().setUp()
+        from datetime import datetime, timedelta, timezone
+        today = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+        last = today - timedelta(days=today.weekday() + 7)
+        in_last, in_prev = int((last + timedelta(days=1)).timestamp()), int((last - timedelta(days=6)).timestamp())
+        self.week = last.date().isoformat()
+
+        def charge(i, pounds, at, status="succeeded"):
+            return {"id": f"ch_{i}", "amount": pounds * 100, "currency": "gbp", "status": status, "paid": status == "succeeded", "created": at}
+
+        items = {"charges": [charge(1, 100, in_last), charge(2, 50, in_last), charge(3, 25, in_last),
+                             charge(4, 999, in_last, "failed"), charge(5, 100, in_prev), charge(6, 50, in_prev)],
+                 "refunds": [{"id": "re_1", "amount": 1000, "currency": "gbp", "status": "succeeded", "created": in_last}],
+                 "customers": [{"id": "cus_1", "created": in_last}, {"id": "cus_2", "created": in_last},
+                               {"id": "cus_3", "created": in_prev}]}
+
+        def lister(kind):
+            def answer(query, body):
+                lo, hi = int(query["created[gte]"][0]), int(query["created[lt]"][0])
+                return {"data": [x for x in items[kind] if lo <= x["created"] < hi], "has_more": False}
+            return answer
+
+        self.gw = FakeGateway({("GET", f"/x/stripe/api.stripe.com/v1/{k}"): lister(k) for k in items})
+
+    def test_practice_run_reports_and_keeps_nothing(self):
+        lines = self.run_it(dry=True)
+        self.assertEqual(lines[-1], "Last week: 175.00 GBP from 3 payments (up 17% on the week before)")
+        self.assertIn("Would tell the owner", "\n".join(lines))
+        self.assertEqual(self.rows("Weekly numbers"), [])
+        self.assertEqual(self.gw.posts(), [])
+
+    def test_keeps_the_week_once(self):
+        self.run_it(dry=False)
+        told = self.told()[0]
+        self.assertIn("Sales: 175.00 GBP from 3 payments (up 17% on the week before)", told)
+        self.assertIn("Refunds: 10.00 GBP (none the week before)", told)
+        self.assertIn("New customers: 2 (up 100% on the week before)", told)
+        self.run_it(dry=False)
+        rows = self.rows("Weekly numbers")
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["Week"], self.week)
+        self.assertEqual(rows[0]["Sales"], 175)
+        self.assertTrue((self.co.root / "files/reports/weekly_numbers.md").exists())
 
 
 if __name__ == "__main__":

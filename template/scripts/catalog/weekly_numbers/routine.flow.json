@@ -1,0 +1,7 @@
+{"steps": [
+  {"kind": "trigger", "label": "Every Monday morning"},
+  {"kind": "read", "label": "Count last week's payments, refunds and new customers", "service": "stripe"},
+  {"kind": "think", "label": "Compare them with the week before"},
+  {"kind": "save", "label": "Keep the week's numbers in the library"},
+  {"kind": "send", "label": "Send you the numbers"}
+]}
