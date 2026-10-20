@@ -31,6 +31,7 @@ from pathlib import Path
 
 import agent
 import burst
+import catalog
 import decide
 import flow
 import integrations
@@ -50,6 +51,7 @@ WORKFLOWS = ROOT / "workflows"
 WORKTREES = Path.home() / ".steerable-worktrees" / "builds" / "".join(c for c in COMPANY.lower() if c.isalnum())
 PY = str(ROOT / ".venv/bin/python")
 PER_BUILD_CAP_USD = "2.00"
+ADAPT_CAP_USD = "0.75"  # a routine started from the catalog: set its settings, adapt the rest
 OPEN = ("building", "needs_owner", "failed", "ready")
 
 RESULT_SCHEMA = {
@@ -411,24 +413,9 @@ How to work:
 """
 
 
-def _prompt(b: dict, wt: str) -> str:
-    if b.get("change"):
-        return _change_prompt(b, wt)
-    name, task = b["workflow"], b["task"]
-    return f"""You are the COO. The owner just approved a new routine, and you're building it now.
-
-Routine: {b['title']}
-Task line: {task}
-{_feedback(b)}
-{_accounts()}
-
-Build it as workflows/{name}.py, starting from workflows/_template.py and meeting every point of
-the Workflow standard in CLAUDE.md. The business, its board, its library and the template are in the
-brief below.
-
-{_brief()}
-
-How to work:
+def _how_to_work(name: str, wt: str, task: str) -> str:
+    """The rules of a new routine's build, the same whether it starts from nothing or from the catalog."""
+    return f"""How to work:
 - A git worktree for the build is at: {wt} (branch build/{name}). Create and edit files ONLY inside
   that worktree, never in the main project. Only add workflows/{name}.py (and a helper module next to
   it if it truly needs one) and workflows/{name}.flow.json. Never touch .env, memory/, tasks.md or scripts/.
@@ -479,6 +466,51 @@ How to work:
 - Write summary and needs for a busy owner who isn't technical: no file names, no code words.
 - Run every test in the foreground and wait for it (never in the background): the build ends when you do.
 """
+
+
+def _prompt(b: dict, wt: str) -> str:
+    if b.get("change"):
+        return _change_prompt(b, wt)
+    name, task = b["workflow"], b["task"]
+    return f"""You are the COO. The owner just approved a new routine, and you're building it now.
+
+Routine: {b['title']}
+Task line: {task}
+{_feedback(b)}
+{_accounts()}
+
+Build it as workflows/{name}.py, starting from workflows/_template.py and meeting every point of
+the Workflow standard in CLAUDE.md. The business, its board, its library and the template are in the
+brief below.
+
+{_brief()}
+
+{_how_to_work(name, wt, task)}"""
+
+
+def _adapt_prompt(b: dict, wt: str, entry: dict) -> str:
+    """For a new routine that starts from one in the catalog: it's in the worktree already, tested."""
+    name, task = b["workflow"], b["task"]
+    settings = "\n".join(f"- {k}: {v}" for k, v in entry["settings"].items()) or "- (none)"
+    return f"""You are the COO. The owner just approved a new routine, and you're setting it up now.
+
+Routine: {b['title']}
+Task line: {task}
+{_feedback(b)}
+It starts from a routine we wrote and tested for this kind of work: {entry['title']} ({entry['description']}).
+It's already in the worktree as workflows/{name}.py, with its flow chart workflows/{name}.flow.json, and it
+already meets the Workflow standard in CLAUDE.md. Your job is to fit it to this company, not to rewrite it:
+1. Set the values in SETTINGS at the top of workflows/{name}.py from the task line and the brief below:
+{settings}
+2. Change the code only where this company truly works differently, and keep the rest as it is.
+3. Update the flow chart's labels if what it does for this company reads differently.
+4. If it needs a service that isn't connected ({', '.join(entry['services']) or 'none'}), ask for it as below.
+
+{_accounts()}
+
+{_brief()}
+
+{_how_to_work(name, wt, task)}"""
 
 
 def _resume_prompt(b: dict, wt: str) -> str:
@@ -583,9 +615,24 @@ def build(bid: str) -> None:
 
     LIVE.mkdir(exist_ok=True)
 
+    # A new routine that clearly matches one in the catalog starts from it (Jev decides, through decide.py);
+    # later attempts of the same routine keep it, from its branch or, after a failure, from the catalog again.
+    entry = catalog.get(b["catalog"]) if b.get("catalog") else None
+    if not entry and not (b.get("change") or b.get("base") or b.get("resume") or b.get("catalog")):
+        entry = catalog.match(b["task"])
+        if entry:
+            b = update(bid, catalog=entry["id"])
+            log_run("builder", "from_catalog", build=bid, workflow=name, entry=entry["id"])
+    if entry and not b.get("base"):
+        catalog.install(entry, wt, name)
+    cap = ADAPT_CAP_USD if entry else PER_BUILD_CAP_USD
+
+    def fresh() -> str:
+        return _adapt_prompt(b, str(wt), entry) if entry and not b.get("change") else _prompt(b, str(wt))
+
     def run(prompt: str, resume: str | None) -> agent.Result:
         out = agent.run(
-            prompt, budget_usd=PER_BUILD_CAP_USD, schema=RESULT_SCHEMA, add_dirs=[wt], resume=resume,
+            prompt, budget_usd=cap, schema=RESULT_SCHEMA, add_dirs=[wt], resume=resume,
             # Connected services as MCP tools, always in dry-run mode: exploring can't change anything.
             mcp="dry",
             # Reads: project and worktree. Writes: the worktree only. Runs: python and git there. Secrets denied.
@@ -602,11 +649,11 @@ def build(bid: str) -> None:
     # code, so it doesn't pay to learn them again. If that conversation is gone (a new engine, another
     # agent), it starts afresh from the code on the branch.
     resume = b.get("resume")
-    out = run(_resume_prompt(b, str(wt)) if resume else _prompt(b, str(wt)), resume)
+    out = run(_resume_prompt(b, str(wt)) if resume else fresh(), resume)
     cost, turns = out.cost, int(out.raw.get("num_turns") or 0)
     if resume and not out.structured:
         log_run("builder", "resume_failed", build=bid, workflow=name, error=out.error[-300:])
-        out = run(_prompt(b, str(wt)), None)
+        out = run(fresh(), None)
         cost, turns = cost + out.cost, turns + int(out.raw.get("num_turns") or 0)
     result = out.structured
     spent = {"cost_usd": round(cost, 6), "turns": turns, "session": out.session_id or ""}

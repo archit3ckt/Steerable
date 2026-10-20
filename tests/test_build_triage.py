@@ -87,7 +87,8 @@ class BuildTriageTest(unittest.TestCase):
 import json, subprocess
 from datetime import datetime, timezone
 import builder
-builder.subprocess.Popen = lambda *a, **k: None
+real_popen = subprocess.Popen
+builder.subprocess.Popen = lambda cmd, *a, **k: None if str(cmd[1]).endswith("builder.py") else real_popen(cmd, *a, **k)
 same = builder.retry_failed(now=datetime(2026, 10, 30, tzinfo=timezone.utc))
 later = builder.retry_failed(now=datetime(2026, 11, 1, 0, 30, tzinfo=timezone.utc))
 print(json.dumps({"same": same, "later": later}))
@@ -104,7 +105,8 @@ from budget import BudgetExceeded
 def over():
     raise BudgetExceeded("over")
 builder.check = over
-builder.subprocess.Popen = lambda *a, **k: None
+real_popen = subprocess.Popen
+builder.subprocess.Popen = lambda cmd, *a, **k: None if str(cmd[1]).endswith("builder.py") else real_popen(cmd, *a, **k)
 bid = builder.start_build("count_new", "Count new things  @workflow:count_new  every:daily")
 builder.build(bid)
 print(json.dumps(builder.load()[bid]))
