@@ -16,7 +16,7 @@ import json
 import re
 import subprocess
 import time
-from datetime import date
+from datetime import date, datetime, timezone
 
 import agent
 import builder
@@ -255,6 +255,44 @@ def new_conversation() -> bool:
             return had_session  # an empty history, or already at a fresh start: no second divider
         _log_chat(DIVIDER, "")
         return True
+
+
+RESUME_WITHIN_MINUTES = 60  # an owner's message older than this isn't picked up again: they've moved on
+RESUME_PROMPT = ("(Your reply to the owner's last message was cut off before you finished: the engine restarted. "
+                 "Carry on from where you were, without starting over or mentioning the restart, and answer it. "
+                 "Their message was:)\n\n{text}")
+
+
+def resume_interrupted() -> bool:
+    """A turn a restart cut off (an engine update, a crash) leaves its live file behind and the owner's
+    message unanswered. Called when the engine starts: clears that, and, when the owner's message is the
+    last thing in the chat and recent, answers it in the same session, which holds what the turn had
+    already done. True if it answered. The owner never has to ask again."""
+    if not LIVE.exists():
+        return False
+    with (CACHE / "chat.lock").open("w") as lock:
+        try:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            return False  # a turn is running: it isn't left over
+        LIVE.unlink(missing_ok=True)
+    last = None
+    if CHAT_LOG.exists():
+        lines = [line for line in CHAT_LOG.read_text().splitlines() if line.strip()]
+        last = json.loads(lines[-1]) if lines else None
+    if not last or last.get("from") != "you":
+        log_run("bridge", "interrupted", resumed=False)
+        return False
+    try:
+        age = (datetime.now(timezone.utc) - datetime.fromisoformat(last["ts"])).total_seconds() / 60
+    except (KeyError, ValueError):
+        age = RESUME_WITHIN_MINUTES + 1
+    if age > RESUME_WITHIN_MINUTES:
+        log_run("bridge", "interrupted", resumed=False, minutes=round(age))
+        return False
+    log_run("bridge", "interrupted", resumed=True)
+    converse(RESUME_PROMPT.format(text=last.get("text") or "(files only)"), APP, show_prompt=False)
+    return True
 
 
 def converse(text: str, channel: str = "Telegram", show_prompt: bool = True, attached: list | None = None) -> str:

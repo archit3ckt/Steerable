@@ -2430,6 +2430,13 @@ class Handler(BaseHTTPRequestHandler):
             super().log_message(fmt, *args)
 
 
+def _resume_chat() -> None:
+    try:
+        bridge.resume_interrupted()
+    except Exception as e:  # noqa: BLE001  never stop the API over it
+        log_run("agent_api", "error", path="resume_chat", error=repr(e)[:500])
+
+
 def main() -> None:
     token = env("AGENT_API_TOKEN")
     if len(token) < 32:
@@ -2439,6 +2446,8 @@ def main() -> None:
     server = ThreadingHTTPServer((host, port), Handler)
     print(f"Agent API for {COMPANY} on http://{host}:{port}")
     log_run("agent_api", "started", host=host, port=port)
+    if env("STEERABLE_READ_ONLY") != "1":  # a reply a restart cut off is finished, not left hanging
+        threading.Thread(target=_resume_chat, daemon=True).start()
     server.serve_forever()
 
 
