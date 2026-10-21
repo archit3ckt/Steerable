@@ -194,6 +194,40 @@ def next_run(text: str, now: datetime) -> datetime:
 LESSONS = CACHE / "lessons.jsonl"
 
 
+def kill_tree(pid, token: str | None = None, children_only: bool = False) -> int:
+    """Stop a process and everything it started (an AI session, the tests it ran, a browser), however
+    they were grouped: asked to stop, then made to after a few seconds. Only that very process (`token`).
+    children_only: what it started, not itself. Returns how many it stopped."""
+    import signal
+
+    if not alive(pid, token):
+        return 0
+    parents: dict[int, list[int]] = {}
+    for stat in Path("/proc").glob("[0-9]*/stat"):
+        try:
+            ppid = int(stat.read_text().rsplit(")", 1)[1].split()[1])
+        except (OSError, IndexError, ValueError):
+            continue
+        parents.setdefault(ppid, []).append(int(stat.parent.name))
+    tree, todo = [], [int(pid)]
+    while todo:
+        p = todo.pop()
+        tree.append(p)
+        todo += parents.get(p, [])
+    if children_only:
+        tree = tree[1:]
+    for sig in (signal.SIGTERM, signal.SIGKILL):
+        for p in tree:
+            try:
+                os.kill(p, sig)
+            except (ProcessLookupError, PermissionError):
+                pass
+        deadline = time.monotonic() + 5
+        while sig == signal.SIGTERM and time.monotonic() < deadline and any(alive(p) for p in tree):
+            time.sleep(0.2)
+    return len(tree)
+
+
 def lesson(text: str) -> None:
     """A routine noticed something worth learning about how the owner wants this work done
     ("Maya marked three leads from outside the delivery area as not interesting"). The daily
@@ -209,9 +243,23 @@ def lesson(text: str) -> None:
         pass
 
 
-def alive(pid) -> bool:
+def proc_token(pid: int | None = None) -> str:
+    """What tells this one process apart from a later one with the same pid: the machine's boot and
+    the process's start time. A restarted container hands out small pids again, so a dead build's pid
+    may belong to something else entirely; "" where /proc can't say."""
+    try:
+        start = Path(f"/proc/{int(pid or os.getpid())}/stat").read_text().rsplit(")", 1)[1].split()[19]
+        return f"{Path('/proc/sys/kernel/random/boot_id').read_text().strip()}:{start}"
+    except (OSError, IndexError, ValueError):
+        return ""
+
+
+def alive(pid, token: str | None = None) -> bool:
     """Is this process still running? (Background work records its pid, so a restart that
-    killed it can be told apart from work that's simply slow.)"""
+    killed it can be told apart from work that's simply slow.) With the `token` it recorded
+    (proc_token), a different process that got the same pid doesn't count."""
+    if token and (now := proc_token(pid)) and now != token:
+        return False
     try:
         os.kill(int(pid), 0)
     except (ProcessLookupError, ValueError, TypeError):

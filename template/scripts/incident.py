@@ -29,7 +29,7 @@ from alert import alert, queue_for_brief
 from budget import BudgetExceeded, check, record
 from pathlib import Path
 
-from common import CACHE, COMPANY, ENGINE_CODE, ROOT, SYSTEM_JOBS, alive, edit_tasks, log_run, now_iso
+from common import CACHE, COMPANY, ENGINE_CODE, ROOT, SYSTEM_JOBS, alive, edit_tasks, kill_tree, log_run, now_iso, proc_token
 from ops_db import record_event
 
 STATE = CACHE / "incidents.json"
@@ -175,7 +175,8 @@ How to work:
 
 
 def investigate(iid: str) -> None:
-    inc = update(iid, pid=os.getpid())  # so recover_stale can tell an investigation a restart killed from a slow one
+    # So recover_stale can tell an investigation a restart killed from a slow one (and from another process with its pid).
+    inc = update(iid, pid=os.getpid(), proc=proc_token())
     try:
         check()
     except BudgetExceeded as e:
@@ -374,9 +375,12 @@ def recover_stale() -> list[str]:
     done = []
     for inc in list(load().values()):
         age = _minutes_since(inc.get("restarted") or inc["opened"])
-        dead = inc.get("pid") and not alive(inc["pid"]) and age > 2
+        running = bool(inc.get("pid")) and alive(inc["pid"], inc.get("proc"))
+        dead = inc.get("pid") and not running and age > 2
         if inc["status"] != "investigating" or (not dead and age < STALE_MINUTES):
             continue
+        if running:  # past its time and still going: stopped, so it can't finish later over what's decided now
+            kill_tree(inc["pid"], inc.get("proc"))
         iid = inc["id"]
         if inc.get("kind") == "request" and inc.get("workflow"):
             import change

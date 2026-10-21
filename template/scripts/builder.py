@@ -27,6 +27,7 @@ import os
 import secrets
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 import agent
@@ -40,7 +41,7 @@ import routine_check
 import runtrace
 import supervise
 from budget import BudgetExceeded, check, record
-from common import CACHE, COMPANY, ENGINE_CODE, ROOT, alive, edit_tasks, log_run, now_iso, task_title
+from common import CACHE, COMPANY, ENGINE_CODE, ROOT, alive, edit_tasks, kill_tree, log_run, now_iso, proc_token, task_title
 from ops_db import record_event
 
 STATE = CACHE / "builds.json"
@@ -142,7 +143,10 @@ def start_change(workflow: str, task: str, change: str) -> str | None:
     return bid
 
 
-STALE_MINUTES = 60  # a build gives up at 40; past this, nothing is working on it any more
+# A build stops itself at LIMIT by the clock on the wall (its watchdog), whatever paused it meanwhile (a
+# sleeping laptop, a slow test); past STALE, nothing should be working on it, and whatever is gets stopped.
+LIMIT_SECONDS = int(os.environ.get("STEERABLE_BUILD_LIMIT_SECONDS") or 50 * 60)
+STALE_MINUTES = 60
 
 
 def recover_stale() -> list[str]:
@@ -160,9 +164,14 @@ def recover_stale() -> list[str]:
             age = (datetime.now(timezone.utc) - datetime.fromisoformat(b["opened"])).total_seconds() / 60
         except ValueError:
             continue
-        dead = b.get("pid") and not alive(b["pid"]) and age > 2
+        running = bool(b.get("pid")) and alive(b["pid"], b.get("proc"))
+        dead = b.get("pid") and not running and age > 2
         if not dead and age < STALE_MINUTES:
             continue
+        if running:  # past its time and still going: stopped, so it can't finish later over what's decided now
+            kill_tree(b["pid"], b.get("proc"))
+            log_run("builder", "stopped", build=b["id"], workflow=b["workflow"], minutes=round(age))
+            dead = True
         changing = bool(b.get("change"))
         if dead and not b.get("resumed"):
             update(b["id"], status="retried")
@@ -591,8 +600,32 @@ def _auto_fix(bid: str, b: dict, fields: dict, review: dict, rounds: int, cost: 
           resume=fields.get("session"))
 
 
+_timed_out = False
+
+
+def _watch(bid: str) -> None:
+    """Stop this build's AI session and its tests once it has run LIMIT_SECONDS by the clock on the
+    wall: the build then ends as a failure, which is the engine's to try again, and never "works on it"
+    for hours. (agent.run's own timeout counts only time the machine was awake.)"""
+    import threading
+
+    started = time.time()
+
+    def watch() -> None:
+        global _timed_out
+        while time.time() - started < LIMIT_SECONDS:
+            time.sleep(min(15, max(1, LIMIT_SECONDS / 10)))
+        _timed_out = True
+        log_run("builder", "time_limit", build=bid, minutes=round(LIMIT_SECONDS / 60))
+        kill_tree(os.getpid(), children_only=True)
+
+    threading.Thread(target=watch, daemon=True).start()
+
+
 def build(bid: str) -> None:
-    b = update(bid, pid=os.getpid())  # so recover_stale can tell a build a restart killed from a slow one
+    # So recover_stale can tell a build a restart killed from a slow one (and from another process with its pid).
+    b = update(bid, pid=os.getpid(), proc=proc_token())
+    _watch(bid)
     try:
         check()
     except BudgetExceeded:
@@ -655,8 +688,10 @@ def build(bid: str) -> None:
     spent = {"cost_usd": round(cost, 6), "turns": turns, "session": out.session_id or ""}
     if not result:
         _cleanup(bid, name)
+        error = ("It ran past its time limit and was stopped. Keep it simpler and test less at once." if _timed_out
+                 else out.error)
         status, fields = _settle_failure(b, {"summary": "Something went wrong while I was building it.", "needs": "",
-                                             **spent}, error=out.error)
+                                             **spent}, error=error, triage="retry" if _timed_out else None)
         update(bid, status=status, error=out.error, **fields)
         return
 
@@ -700,7 +735,7 @@ def build(bid: str) -> None:
             fields["summary"] = "It passed my tests, but its practice run didn't work. Try again and I'll look into why."
             fields["test_output"] = practice["output"]
     if status == "failed":
-        status, fields = _settle_failure(b, fields, triage=known)
+        status, fields = _settle_failure(b, fields, triage=known or ("retry" if _timed_out else None))
     _cleanup(bid, name, keep_branch=status == "ready")
     if b.get("base"):
         git("branch", "-D", b["base"], check_=False)
