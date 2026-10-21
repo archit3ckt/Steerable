@@ -11,6 +11,11 @@ outcome and the activity log.
         --option absorb="Keep prices, take the hit" \\
         --recommend raise --why "Customers have accepted small rises before, and it keeps margins at 36%." \\
         --goal "$8k monthly revenue"
+
+For a choice of direction, give each option its case, and the owner sees them side by side as cards:
+        --pro raise="Customers took small rises before" --con raise="A few price-sensitive buyers may leave" \\
+        --tag raise="Starts May 1"
+Two or three short points each, in plain words.
 """
 import argparse
 import json
@@ -30,6 +35,8 @@ def main() -> int:
     parser.add_argument("--recommend", required=True, help="the id of the option you'd pick")
     parser.add_argument("--why", required=True, help="why you'd pick it, one sentence")
     parser.add_argument("--goal", help="the goal it's about")
+    for flag, what in (("--pro", "a point for it"), ("--con", "a point against it"), ("--tag", "a short fact: cost, time, what it needs")):
+        parser.add_argument(flag, action="append", default=[], metavar="ID=TEXT", help=f"{what} (an option's id), repeatable")
     args = parser.parse_args()
 
     options = []
@@ -46,6 +53,16 @@ def main() -> int:
     if args.recommend not in {o["id"] for o in options}:
         print("--recommend must be one of the option ids.", file=sys.stderr)
         return 1
+    by_id = {o["id"]: o for o in options}
+    for flag, key, cap in (("pro", "pros", 3), ("con", "cons", 3), ("tag", "tags", 3)):
+        for raw in getattr(args, flag):
+            oid, _, text = raw.partition("=")
+            if oid not in by_id or not text.strip():
+                print(f"Write --{flag} as option_id=text, for one of the options (got {raw!r}).", file=sys.stderr)
+                return 1
+            points = by_id[oid].setdefault(key, [])
+            if len(points) < cap:
+                points.append(text.strip()[:120])
 
     with connect() as con:
         goal = con.execute("SELECT id FROM goals WHERE goal = ?", (args.goal,)).fetchone() if args.goal else None

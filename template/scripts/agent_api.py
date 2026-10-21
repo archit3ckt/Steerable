@@ -47,6 +47,7 @@ Every request except GET /health needs `Authorization: Bearer <AGENT_API_TOKEN>`
     POST /v1/ai/jev  /v1/ai/jev/remove  the owner's Jev key, checked before it's kept
     POST /v1/files?name=<name>         a file attached in the chat (raw bytes, up to 20 MB) -> {id, name, kind, size}
     GET  /v1/files/<id>                that file (pictures inline, the rest as downloads)
+    GET  /v1/decisions/signed          what the owner authorized by signing; POST .../signed/<id>/undo takes it back
     GET  /v1/library                   the library's tables (records the owner looks up: library.py); ?archived=1 the archived ones
     POST /v1/library/tables/<id>/archive, .../restore   take a whole table out of the Library, or bring it back
     GET  /v1/library/tables/<id>       a table: columns and a page of rows (?q&sort&dir&where.<column>&archived&offset&limit)
@@ -127,6 +128,7 @@ import accounts
 import ai_access
 import approvals
 import owner_words
+import signed
 import small_decisions
 import bridge
 import browser
@@ -458,9 +460,11 @@ def mission_decision(m: sqlite3.Row) -> dict:
             {"id": "hold", "label": "Not now", "tone": "quiet", "outcome": "It goes back on the shelf"},
         ]
         recommendation = {"optionId": "", "why": ""}
+    compare = len(asked) >= 2 and any(o.get("pros") or o.get("cons") for o in asked)
     return {
         "id": f"mission:{m['id']}",
         "kind": "choice",
+        **({"display": "choice"} if compare else {}),
         "urgent": m["priority"] == "P0",
         "title": m["mission"],
         "context": context,
@@ -498,7 +502,7 @@ def needs_what(ask: dict) -> str:
 
 
 def coo_name() -> str:
-    return env("COO_NAME") or "Your COO"
+    return env("COO_NAME") or "Your business manager"
 
 
 def account_decision(a: dict) -> dict:
@@ -588,9 +592,21 @@ def ready_decision(b: dict) -> dict:
         concerns.insert(0, f"It sent something to a website {unasked} time{'s' if unasked != 1 else ''} without saying what first. "
                            "Look at those steps before switching it on.")
     name = short_title(b["title"])
+    authorize = {
+        "title": f"Use the new version of \u201c{name}\u201d" if changing else f"Let \u201c{name}\u201d run",
+        "does": [x for x in [sentence(plain(review["summary"])) if review.get("summary") else "", f"It runs {when}."] if x],
+        "limits": [sentence(plain(x)) for x in review.get("limits") or []]
+                  + ["Its first runs are watched: anything it can't undo is checked before it happens."],
+        "wont": [sentence(plain(x)) for x in review.get("wont") or []],
+        "undo": "Switch it off any time, under Signed by you or on its page. What it already did stays done.",
+        "record": "In its practice run it " + "; ".join(f"{f['label'].lower()}: {f['value'].lower()}" for f in facts) + ".",
+        "optionId": "switch_on",
+    }
     return {
         "id": f"build:{b['id']}",
         "kind": "approval",
+        "display": "authorize",
+        "authorize": authorize,
         "urgent": False,
         "title": f"The update to \u201c{name}\u201d is ready: see what changes" if changing
                  else f"See what \u201c{name}\u201d will do, then switch it on",
@@ -643,7 +659,16 @@ def watch_decision(r: dict, names: dict[str, str]) -> dict:
 
 def trust_decision(w: dict, names: dict[str, str]) -> dict:
     name = short_title(routine_name(w["workflow"], names))
-    return {"id": f"trust:{w['workflow']}", "kind": "choice", "urgent": False,
+    authorize = {
+        "title": f"Let \u201c{name}\u201d run on its own",
+        "does": ["It goes ahead with what it can't undo (sending, posting, submitting) without waiting for a check first."],
+        "limits": ["The same routine on the same schedule: nothing about what it does changes."],
+        "wont": [],
+        "undo": "Put it back under watch any time, under Signed by you or on its page.",
+        "record": f"It ran {w['runs']} times while watched, the last {w['clean']} with nothing held back or going wrong.",
+        "optionId": "trust",
+    }
+    return {"id": f"trust:{w['workflow']}", "kind": "choice", "display": "authorize", "authorize": authorize, "urgent": False,
             "title": f"Let \u201c{name}\u201d run on its own?",
             "context": f"It's run {w['runs']} times while watched, the last {w['clean']} without anything held back or going wrong. "
                        "On its own, it no longer waits for a check before each thing it can't undo.",
@@ -657,7 +682,7 @@ def trust_decision(w: dict, names: dict[str, str]) -> dict:
 
 def value_decision(name: str, r: dict) -> dict:
     """The COO needs something only the owner has: a private link, a key. One step in the app."""
-    coo = env("COO_NAME") or "Your COO"
+    coo = env("COO_NAME") or "Your business manager"
     return {"id": f"value:{name}", "kind": "choice", "urgent": False,
             "title": f"{coo} needs {r['label']}",
             "context": " ".join(c for c in [sentence(plain(r.get("why") or "")),
@@ -671,7 +696,7 @@ def tool_decision(p: dict) -> dict:
     """A change the COO wanted to make in one of the owner's services, from the chat."""
     server, tool = approvals.split(p["tool"])
     service, what = approvals.service_name(server), approvals.human(tool)
-    coo = env("COO_NAME") or "Your COO"
+    coo = env("COO_NAME") or "Your business manager"
     args = p["input"] if isinstance(p["input"], dict) else {}
     facts = [{"label": approvals.human(k).capitalize(),
               "value": (v if isinstance(v, str) else json.dumps(v))[:80]} for k, v in list(args.items())[:6]]
@@ -872,10 +897,13 @@ def decide(decision_id: str, option_id: str, words: str = "") -> dict:
         if option_id == "retry":
             builder.retry(ref)
         elif option_id == "switch_on":
+            workflow = (builder.load().get(ref) or {}).get("workflow", "")
             try:
                 builder.switch_on(ref)
             except RuntimeError as e:
                 raise ApiError(409, str(e)) from None
+            if match.get("authorize"):
+                signed.record(match["authorize"]["title"], "switch_on", workflow, decision_id)
         elif option_id == "change":
             builder.revise(ref, words)
         else:
@@ -889,6 +917,8 @@ def decide(decision_id: str, option_id: str, words: str = "") -> dict:
     elif kind == "trust":
         supervise.answer_trust(ref, option_id == "trust")
         record_event(note, who="CEO", workflow=ref)
+        if option_id == "trust" and match.get("authorize"):
+            signed.record(match["authorize"]["title"], "trust", ref, decision_id)
     elif kind == "mission":
         with connect() as con:
             row = con.execute("SELECT options FROM missions WHERE id = ?", (int(ref),)).fetchone()
@@ -910,6 +940,27 @@ def decide(decision_id: str, option_id: str, words: str = "") -> dict:
     return {"id": f"decided-{decision_id}", "at": now_iso(), "kind": "decided", "actor": "you",
             "title": f"You decided: {option['label']}", "detail": match["title"], "goal": match.get("goal"),
             **({"next": next_page} if next_page else {})}
+
+
+# ---------- signed: what the owner authorized ----------
+
+def signed_list() -> list[dict]:
+    return [{"id": i["id"], "title": i["title"], "kind": i["kind"], "at": i["at"],
+             **({"undone": i["undone"]} if i.get("undone") else {})} for i in signed.recent()]
+
+
+def undo_signed(sid: str) -> dict:
+    """Take back a signature: a routine switched on is switched off, one let run on its own is watched again."""
+    item = signed.get(sid)
+    if not item or item.get("undone"):
+        raise ApiError(410, "That's no longer there to undo.")
+    if item["kind"] == "switch_on":
+        set_routine_paused(item["workflow"], True)
+    else:
+        supervise.start(item["workflow"], why="owner")
+    signed.mark_undone(sid)
+    record_event(f"You undid: {item['title']}.", who="CEO", workflow=item["workflow"])
+    return {"ok": True}
 
 
 # ---------- small decisions, settled for the owner ----------
@@ -2182,6 +2233,8 @@ ROUTES = [
     ("GET", r"/v1/decisions", lambda q, b: decisions()),
     ("GET", r"/v1/decisions/settled", lambda q, b: settled_list()),
     ("POST", r"/v1/decisions/settled/(?P<id>\d+)/undo", lambda q, b, id: undo_settled(int(id))),
+    ("GET", r"/v1/decisions/signed", lambda q, b: signed_list()),
+    ("POST", r"/v1/decisions/signed/(?P<sid>s[0-9a-f]+)/undo", lambda q, b, sid: undo_signed(sid)),
     ("GET", r"/v1/preferences", lambda q, b: preferences()),
     ("POST", r"/v1/preferences", lambda q, b: set_preferences(b)),
     ("POST", r"/v1/decisions/(?P<id>[^/]+)", lambda q, b, id: decide(id, body_field(b, "optionId", str), str(b.get("note") or ""))),

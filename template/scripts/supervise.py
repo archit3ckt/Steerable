@@ -241,8 +241,12 @@ REVIEW_SCHEMA = {
                   "description": "gaps the builder fixes itself before the owner sees anything: specific, technical is fine; empty if none"},
         "concerns": {"type": "array", "items": {"type": "string"},
                      "description": "only what needs the owner's own decision or action, in plain words for a busy non-technical owner; usually empty"},
+        "limits": {"type": "array", "items": {"type": "string"},
+                   "description": "the bounds it keeps, from its code, for the owner to read before switching it on; plain words"},
+        "wont": {"type": "array", "items": {"type": "string"},
+                 "description": "what it never does that an owner might worry about, from its code; plain words"},
     },
-    "required": ["summary", "fixes", "concerns"],
+    "required": ["summary", "fixes", "concerns", "limits", "wont"],
     "additionalProperties": False,
 }
 
@@ -321,15 +325,21 @@ about style or code quality.
 concerns: what only the owner can settle, in plain words for a busy owner who isn't technical: a choice about their
 business the routine can't make for them, something it does in their name they should know before it starts
 (contacting people, spending money), or something only they can give (a login, a connection). Never technical
-gaps: those are fixes. Usually empty."""
+gaps: those are fixes. Usually empty.
+limits and wont: the owner signs for this routine before it runs on its own, and reads these on that page. limits: the
+bounds it keeps, read from its code, 1 to 3 short sentences ("At most 2 nudges per proposal, only in the same email
+thread."). wont: what it never does that an owner might worry about, 1 to 3 short sentences ("It never changes prices or
+attaches files."). Only what the code really guarantees; plain words, no code words."""
     try:
         out = _ask(prompt, images, REVIEW_SCHEMA, "supervisor", cap_usd="0.60")
         return {"summary": str(out.get("summary") or "")[:1200],
                 "fixes": [str(c)[:500] for c in (out.get("fixes") or [])][:5],
-                "concerns": [str(c)[:300] for c in (out.get("concerns") or [])][:3]}
+                "concerns": [str(c)[:300] for c in (out.get("concerns") or [])][:3],
+                "limits": [str(c)[:240] for c in (out.get("limits") or [])][:3],
+                "wont": [str(c)[:240] for c in (out.get("wont") or [])][:3]}
     except Exception as e:  # noqa: BLE001
         log_run("supervise", "review_error", workflow=workflow, error=repr(e)[:300])
-        return {"summary": "", "fixes": [], "concerns": []}
+        return {"summary": "", "fixes": [], "concerns": [], "limits": [], "wont": []}
 
 
 # ---------- after a watched run ----------
