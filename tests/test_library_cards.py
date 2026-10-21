@@ -27,6 +27,11 @@ class LibraryCardsTest(unittest.TestCase):
         views = self.co.py("import json, library; print(json.dumps([(v['name'], v['type']) for v in library.table('Clients').views()]))")
         self.assertEqual(views, [["All rows", "grid"], ["Gallery", "cards"]])
 
+    def test_an_unnamed_cards_view_is_called_cards(self):
+        made = self.co.py("import json, library; t = library.table('Clients', columns='Name:text'); "
+                          "print(json.dumps(t.save_view(None, kind='cards')['name']))")
+        self.assertEqual(made, "Cards")
+
 
 if __name__ == "__main__":
     unittest.main()

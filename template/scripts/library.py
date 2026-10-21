@@ -696,7 +696,7 @@ class Table:
                 if con.execute("SELECT COUNT(*) FROM views WHERE table_id = ?", (self.id,)).fetchone()[0] >= MAX_VIEWS:
                     raise LibraryError(f"A table can have up to {MAX_VIEWS} views.")
                 kind = kind or "grid"
-                name = (name or {"grid": "Grid", "kanban": "Board", "calendar": "Calendar"}.get(kind, "View")).strip()
+                name = (name or {"grid": "Grid", "kanban": "Board", "calendar": "Calendar", "cards": "Cards"}.get(kind, "View")).strip()
                 config = self._view_config(kind, config or {})
             if not name or len(name) > 60:
                 raise LibraryError("Give the view a name, up to 60 characters.")

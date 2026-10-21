@@ -186,7 +186,7 @@ export function libraryViewInput(view: unknown): { name?: string; type?: Library
   const text = (x: unknown, max = 60) => (typeof x === "string" ? x.slice(0, max) : undefined);
   const out: { name?: string; type?: LibraryView["type"]; config?: LibraryViewConfig } = {};
   if (text(v.name) !== undefined) out.name = text(v.name);
-  if (v.type === "grid" || v.type === "kanban" || v.type === "calendar") out.type = v.type;
+  if (v.type === "grid" || v.type === "kanban" || v.type === "calendar" || v.type === "cards") out.type = v.type;
   const c = v.config && typeof v.config === "object" ? (v.config as Record<string, unknown>) : null;
   if (c) {
     const where: Record<string, string> = {};
