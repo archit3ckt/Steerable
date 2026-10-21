@@ -1,0 +1,7 @@
+{"steps": [
+  {"kind": "trigger", "label": "On the 1st of each month"},
+  {"kind": "read", "label": "Count last month's meetings and hours per client", "service": "google"},
+  {"kind": "read", "label": "Count emails and what was invoiced per client", "service": "google"},
+  {"kind": "save", "label": "Keep each client's month in the library"},
+  {"kind": "send", "label": "Send you the month by client"}
+]}

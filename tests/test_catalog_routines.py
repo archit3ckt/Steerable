@@ -87,7 +87,8 @@ class CatalogRoutineTest(unittest.TestCase):
             self.gw.close()
 
     def run_it(self, dry: bool) -> list[str]:
-        env = self.co.env(STEERABLE_GATEWAY_URL=self.gw.url, ANTHROPIC_API_KEY="tok", STEERABLE_WORKFLOW=self.entry,
+        env = self.co.env(STEERABLE_GATEWAY_URL=self.gw.url, ANTHROPIC_API_KEY="tok", ANTHROPIC_BASE_URL=self.gw.url,
+                          STEERABLE_WORKFLOW=self.entry,
                           **({"STEERABLE_DRY_RUN": "1"} if dry else {"STEERABLE_CONTEXT": "routine"}))
         proc = subprocess.run([sys.executable, f"workflows/{self.entry}.py", self.task], cwd=self.co.root,
                               capture_output=True, text=True, timeout=120, env=env)
@@ -267,6 +268,258 @@ class EmailFollowUpsTest(CatalogRoutineTest):
         [post] = self.gw.posts()
         self.assertTrue(post["path"].endswith("/messages/send"))
         self.assertEqual([r["Status"] for r in self.rows("Follow-ups")], ["Sent"])
+
+
+class ProposalFollowUpsTest(CatalogRoutineTest):
+    entry = "proposal_follow_ups"
+    task = "Follow up on proposals that got no answer  @workflow:proposal_follow_ups  every:weekdays"
+    me = "Sam <sam@shop.test>"
+
+    def setUp(self):
+        super().setUp()
+        self.threads = {
+            "p1": [mail("q1", self.me, "Dana Lee <dana@acme.test>", "Proposal: brand workshop", 5, True)],
+            "p2": [mail("q2", self.me, "omar@beta.test", "Quote for the Q1 audit", 12, True)],
+            "p3": [mail("q3", self.me, "kim@gamma.test", "Proposal", 8, True),
+                   mail("q4", "kim@gamma.test", self.me, "Re: Proposal", 6, False)],  # answered
+            "p4": [mail("q5", self.me, "lee@delta.test", "Proposal for March", 1, True)],  # too soon
+        }
+        gmail = "/x/google/gmail.googleapis.com/gmail/v1/users/me"
+        routes = {("GET", f"{gmail}/profile"): {"emailAddress": "sam@shop.test"},
+                  ("GET", f"{gmail}/threads"): lambda q, b: {"threads": [{"id": t} for t in self.threads]},
+                  ("POST", f"{gmail}/messages/send"): lambda q, b: {"id": "s1", "threadId": json.loads(b)["threadId"]}}
+        for tid in self.threads:
+            routes[("GET", f"{gmail}/threads/{tid}")] = (lambda tid: lambda q, b: {"id": tid, "messages": self.threads[tid]})(tid)
+        self.gw = FakeGateway(routes)
+
+    def test_practice_run_sends_nothing(self):
+        self.assertEqual(self.run_it(dry=True)[-1], "Would nudge 2 proposals with no answer")
+        self.assertEqual(self.gw.posts(), [])
+
+    def test_nudges_once_then_waits_for_the_next(self):
+        self.assertEqual(self.run_it(dry=False)[-1], "Wrote nudges for 2 proposals with no answer")
+        self.assertIn("I wanted to check you got the proposal", (self.co.root / "drafts/proposal_follow_ups-proposal-p1.md").read_text())
+        self.assertIn("Dana Lee <dana@acme.test>", self.told()[0])
+        # the next morning: the 12-day-old one isn't nudged again straight away, though only drafted
+        self.assertEqual(self.run_it(dry=False)[-1], "No proposals waiting on a nudge")
+        rows = {r["Subject"]: r for r in self.rows("Proposals")}
+        self.assertEqual(rows["Quote for the Q1 audit"]["Nudges"], 1)
+        self.threads["p1"].append(mail("q9", "dana@acme.test", self.me, "Re: Proposal: brand workshop", 0, False))
+        self.run_it(dry=False)
+        self.assertEqual({r["Subject"]: r["Status"] for r in self.rows("Proposals")}["Proposal: brand workshop"], "Answered")
+
+
+class MeetingPrepTest(CatalogRoutineTest):
+    entry = "meeting_prep"
+    task = "Prepare a brief before each client meeting  @workflow:meeting_prep  every:daily"
+
+    def setUp(self):
+        super().setUp()
+        from datetime import datetime, timedelta, timezone
+        soon = (datetime.now(timezone.utc) + timedelta(hours=3)).isoformat(timespec="seconds")
+        self.upcoming = [
+            {"id": "e1", "summary": "Workshop kickoff", "start": {"dateTime": soon},
+             "attendees": [{"email": "sam@shop.test", "self": True}, {"email": "dana@acme.test", "displayName": "Dana Lee"}]},
+            {"id": "e2", "summary": "Team sync", "start": {"dateTime": soon},
+             "attendees": [{"email": "sam@shop.test", "self": True}, {"email": "jo@shop.test"}]},  # only colleagues
+            {"id": "e3", "summary": "Holiday", "start": {"date": soon[:10]}, "attendees": [{"email": "x@acme.test"}]},  # all day
+        ]
+        past = [{"id": "old", "start": {"dateTime": "2026-09-14T10:00:00+00:00"}}]
+        gmail = "/x/google/gmail.googleapis.com/gmail/v1/users/me"
+        calendar = "/x/google/www.googleapis.com/calendar/v3/calendars/primary/events"
+        email = mail("m1", "Dana Lee <dana@acme.test>", "sam@shop.test", "Agenda for the kickoff", 2, False)
+        email["snippet"] = "Here are the three things we'd like to cover"
+        self.gw = FakeGateway({
+            ("GET", f"{gmail}/profile"): {"emailAddress": "sam@shop.test"},
+            ("GET", calendar): lambda q, b: {"items": past if "q" in q else self.upcoming},
+            ("GET", f"{gmail}/messages"): {"messages": [{"id": "m1"}]},
+            ("GET", f"{gmail}/messages/m1"): email,
+        })
+
+    def test_practice_run_keeps_nothing(self):
+        self.assertEqual(self.run_it(dry=True)[-1], "Would brief 1 upcoming meeting")
+        self.assertEqual(self.rows("Meeting briefs"), [])
+
+    def test_briefs_each_meeting_once(self):
+        self.assertEqual(self.run_it(dry=False)[-1], "Briefed 1 upcoming meeting")
+        [row] = self.rows("Meeting briefs")
+        self.assertEqual(row["With"], "Dana Lee")
+        self.assertEqual(row["Last met"], "2026-09-14")
+        self.assertIn("Agenda for the kickoff: Here are the three things", row["Brief"])
+        self.assertIn("Workshop kickoff with Dana Lee", self.told()[0])
+        self.assertEqual(self.run_it(dry=False)[-1], "No upcoming meetings need a brief")
+        self.assertEqual(self.gw.posts(), [])  # it only reads
+
+
+class CallRecapsTest(CatalogRoutineTest):
+    entry = "call_recaps"
+    task = "Write a recap after each client call  @workflow:call_recaps  every:3h"
+
+    def setUp(self):
+        super().setUp()
+        self.co.py("""
+import json, library
+t = library.table("Call notes", columns="Client:text, Email:text, Date:date, Notes:longtext, Recap:status(To do|Drafted|Sent|Skipped)")
+t.add({"Client": "Acme", "Email": "dana@acme.test", "Date": "2026-10-20", "Notes": "Agreed 3-month pilot. Dana sends data by Fri 24th. I send revised scope Monday."})
+t.add({"Client": "Beta", "Email": "omar@beta.test", "Date": "2026-10-19", "Notes": "Old call", "Recap": "Drafted"})
+print(json.dumps(1))
+""")
+        self.asked = []
+        answer = {"subject": "Recap: pilot", "email": "Hi Dana,\n\nThanks for the call...\n\nThanks",
+                  "actions": [{"what": "Send the data", "who": "Client", "due": "2026-10-24"},
+                              {"what": "Send the revised scope", "who": "You", "due": "next week"}]}
+
+        def messages(q, body):
+            self.asked.append(json.loads(body))
+            return {"content": [{"type": "text", "text": json.dumps(answer)}], "usage": {"input_tokens": 900, "output_tokens": 300}}
+
+        gmail = "/x/google/gmail.googleapis.com/gmail/v1/users/me"
+        self.gw = FakeGateway({("POST", "/v1/messages"): messages, ("POST", f"{gmail}/messages/send"): {"id": "s1"}})
+
+    def test_practice_run_writes_nothing_down(self):
+        self.assertEqual(self.run_it(dry=True)[-1], "Would recap 1 call")
+        self.assertEqual(self.rows("Action items"), [])
+        self.assertEqual(sorted(r["Recap"] for r in self.rows("Call notes")), ["Drafted", "To do"])
+
+    def test_recap_and_action_items_once(self):
+        self.assertEqual(self.run_it(dry=False)[-1], "Recapped 1 call")
+        self.assertEqual(len(self.asked), 1)  # only the call waiting
+        self.assertIn("Dana sends data by Fri 24th", self.asked[0]["messages"][0]["content"][-1]["text"])
+        items = {r["What"]: r for r in self.rows("Action items")}
+        self.assertEqual(items["Send the data"]["Due"], "2026-10-24")
+        self.assertEqual(items["Send the data"]["Who"], "Client")
+        self.assertNotIn("Due", items["Send the revised scope"])  # not a date: left empty
+        self.assertTrue((self.co.root / "drafts").exists())
+        self.assertIn("Recaps ready for your calls with Acme", self.told()[0])
+        self.assertEqual(self.gw.posts()[0]["path"], "/v1/messages")  # drafted, not sent
+        self.assertEqual(self.run_it(dry=False)[-1], "No calls waiting for a recap")
+        self.assertEqual(len(self.asked), 1)
+
+
+class MonthlyClientReportTest(CatalogRoutineTest):
+    entry = "monthly_client_report"
+    task = "Send me last month by client  @workflow:monthly_client_report  every:monthly"
+
+    def setUp(self):
+        super().setUp()
+        from datetime import datetime, timedelta, timezone
+        first = datetime.now(timezone.utc).replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        start = (first - timedelta(days=1)).replace(day=1)
+        self.label = start.strftime("%B %Y")
+        self.month = start.date().isoformat()
+        at = lambda day, hour: (start + timedelta(days=day, hours=hour)).isoformat()  # noqa: E731
+        me = {"email": "sam@shop.test", "self": True}
+        events = [
+            {"id": "a", "start": {"dateTime": at(2, 9)}, "end": {"dateTime": at(2, 10)}, "attendees": [me, {"email": "dana@acme.test"}]},
+            {"id": "b", "start": {"dateTime": at(9, 9)}, "end": {"dateTime": at(9, 9.5)}, "attendees": [me, {"email": "lee@acme.test"}]},
+            {"id": "c", "start": {"dateTime": at(5, 14)}, "end": {"dateTime": at(5, 15)}, "attendees": [me, {"email": "jo@gmail.com"}]},
+            {"id": "d", "start": {"dateTime": at(6, 8)}, "end": {"dateTime": at(6, 9)}, "attendees": [me, {"email": "kim@shop.test"}]},  # a colleague
+        ]
+        paid_at = int((start + timedelta(days=10)).timestamp())
+        invoices = [{"id": "in_1", "customer_email": "ap@acme.test", "amount_paid": 400000, "status_transitions": {"paid_at": paid_at}},
+                    {"id": "in_2", "customer_email": "pay@beta.test", "amount_paid": 50000, "status_transitions": {"paid_at": paid_at}}]
+        counts = {"acme.test": 23, "beta.test": 4, "jo@gmail.com": 7}
+        gmail = "/x/google/gmail.googleapis.com/gmail/v1/users/me"
+        self.gw = FakeGateway({
+            ("GET", f"{gmail}/profile"): {"emailAddress": "sam@shop.test"},
+            ("GET", "/x/google/www.googleapis.com/calendar/v3/calendars/primary/events"): {"items": events},
+            ("GET", "/x/stripe/api.stripe.com/v1/invoices"): {"data": invoices, "has_more": False},
+            ("GET", f"{gmail}/messages"): lambda q, b: {"resultSizeEstimate": next(n for k, n in counts.items() if f"from:{k} " in q["q"][0])},
+        })
+
+    def test_practice_run_keeps_nothing(self):
+        self.assertEqual(self.run_it(dry=True)[-1], f"{self.label}: 3 clients (practice run)")
+        self.assertEqual(self.rows("Client months"), [])
+
+    def test_the_month_by_client(self):
+        self.assertEqual(self.run_it(dry=False)[-1], f"{self.label}: 3 clients")
+        rows = {r["Client"]: r for r in self.rows("Client months")}
+        self.assertEqual(set(rows), {"acme.test", "beta.test", "jo@gmail.com"})  # not the colleague
+        self.assertEqual((rows["acme.test"]["Meetings"], rows["acme.test"]["Hours"], rows["acme.test"]["Emails"], rows["acme.test"]["Invoiced"]), (2, 1.5, 23, 4000))
+        self.assertEqual(rows["beta.test"]["Meetings"], 0)  # invoiced only
+        self.assertEqual(rows["acme.test"]["Month"], self.month)
+        self.assertIn("- acme.test: 2 meetings (1.5 h), 23 emails, 4,000.00 invoiced", self.told()[0])
+        self.run_it(dry=False)
+        self.assertEqual(len(self.rows("Client months")), 3)  # the same month again: no duplicates
+
+
+class LeadTriageTest(CatalogRoutineTest):
+    entry = "lead_triage"
+    task = "Pick out new leads from my email and draft a reply  @workflow:lead_triage  every:3h"
+
+    def setUp(self):
+        super().setUp()
+        def message(mid, sender, subject, snippet):
+            m = mail(mid, sender, "sam@shop.test", subject, 0, False)
+            m.update(threadId=f"t{mid}", snippet=snippet)
+            return m
+        self.inbox = {
+            "m1": message("m1", "Dana Lee <dana@newco.test>", "Brand workshop", "Hi, could you send a quote for a brand workshop in May?"),
+            "m2": message("m2", "Weekly <news@letters.test>", "This week in design", "Top 10 stories"),
+            "m3": message("m3", "Omar <omar@client.test>", "One more thing", "Can you quote the follow-up work too?"),  # already a client
+            "m4": message("m4", "Max <max@agency.test>", "Grow your agency", "We help consultants get more clients with ads."),
+        }
+        gmail = "/x/google/gmail.googleapis.com/gmail/v1/users/me"
+
+        def listing(q, b):
+            query = q["q"][0]
+            if query.startswith("in:sent"):
+                return {"messages": [{"id": "x"}] if "omar@client.test" in query else [], "resultSizeEstimate": 0}
+            return {"messages": [{"id": k} for k in self.inbox]}
+
+        routes = {("GET", f"{gmail}/profile"): {"emailAddress": "sam@shop.test"}, ("GET", f"{gmail}/messages"): listing,
+                  ("POST", f"{gmail}/messages/send"): {"id": "s1"}}
+        for k, m in self.inbox.items():
+            routes[("GET", f"{gmail}/messages/{k}")] = m
+        self.gw = FakeGateway(routes)
+
+    def test_practice_run_keeps_nothing(self):
+        self.assertEqual(self.run_it(dry=True)[-1], "Would keep 1 new lead")
+        self.assertEqual(self.rows("Leads"), [])
+
+    def test_picks_the_lead_and_drafts_a_reply_once(self):
+        self.assertEqual(self.run_it(dry=False)[-1], "Found 1 new lead")
+        [lead] = self.rows("Leads")
+        self.assertEqual((lead["Name"], lead["Email"], lead["Status"]), ("Dana Lee", "dana@newco.test", "New"))
+        self.assertIn("Hi Dana,", (self.co.root / "drafts/lead_triage-lead-m1.md").read_text())
+        self.assertIn("Dana Lee (dana@newco.test)", self.told()[0])
+        self.assertEqual(self.run_it(dry=False)[-1], "No new leads")  # each email is looked at once
+
+    def test_sends_when_the_owner_said_so(self):
+        path = self.co.root / "workflows/lead_triage.py"
+        path.write_text(path.read_text().replace('"SEND": False', '"SEND": True'))
+        self.assertEqual(self.run_it(dry=False)[-1], "Found 1 new lead")
+        self.assertEqual([p["path"].rsplit("/", 1)[-1] for p in self.gw.posts()], ["send"])
+        self.assertEqual(self.rows("Leads")[0]["Status"], "Replied")
+
+
+class TestimonialRequestsTest(CatalogRoutineTest):
+    entry = "testimonial_requests"
+    task = "Ask happy clients for a testimonial  @workflow:testimonial_requests  every:weekly"
+
+    def setUp(self):
+        super().setUp()
+        def inv(iid, name, email, amount, paid_days_ago):
+            return {"id": iid, "number": iid.upper(), "customer_name": name, "customer_email": email, "amount_paid": amount * 100,
+                    "status_transitions": {"paid_at": int(time.time()) - paid_days_ago * DAY}}
+        invoices = [inv("in_1", "Dana Lee", "dana@acme.test", 1200, 10), inv("in_2", "Beta", "pay@beta.test", 100, 10),  # too small
+                    inv("in_3", "Gamma Co", "ap@gamma.test", 900, 2),  # too soon
+                    inv("in_4", "Dana Lee", "dana@acme.test", 800, 30)]  # the same client: one request
+        self.gw = FakeGateway({("GET", "/x/stripe/api.stripe.com/v1/invoices"): {"data": invoices, "has_more": False},
+                               ("POST", "/x/google/gmail.googleapis.com/gmail/v1/users/me/messages/send"): {"id": "s1"}})
+
+    def test_practice_run_keeps_nothing(self):
+        self.assertEqual(self.run_it(dry=True)[-1], "Would ask 1 client for a testimonial")
+        self.assertEqual(self.rows("Testimonial requests"), [])
+
+    def test_asks_once(self):
+        self.assertEqual(self.run_it(dry=False)[-1], "Asked 1 client for a testimonial")
+        [row] = self.rows("Testimonial requests")
+        self.assertEqual((row["Email"], row["Invoice"], row["Status"]), ("dana@acme.test", "IN_1", "Asked"))
+        self.assertIn("Hi Dana,", (self.co.root / "drafts/testimonial_requests-testimonial-dana-acme-test.md").read_text())
+        self.assertIn("Dana Lee paid recently", self.told()[0])
+        self.assertEqual(self.gw.posts(), [])
+        self.assertEqual(self.run_it(dry=False)[-1], "No clients to ask for a testimonial")
 
 
 if __name__ == "__main__":

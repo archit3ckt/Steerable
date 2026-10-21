@@ -1,0 +1,11 @@
+{
+  "title": "Lead triage",
+  "description": "Go through new emails from people the owner hasn't written to before, pick out the ones asking to work with the business, keep them as leads and draft a reply to each",
+  "services": ["google"],
+  "settings": {
+    "LOOK_BACK_HOURS": "how far back to look at new emails each run, in hours",
+    "SKIP": "addresses or domains that are never leads",
+    "REPLY": "the reply to a new lead, in the owner's voice; {name} and {subject} are filled in",
+    "SEND": "send the reply (true) or keep it as a draft for the owner (false)"
+  }
+}

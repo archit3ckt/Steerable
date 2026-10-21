@@ -1,0 +1,11 @@
+{
+  "title": "Call recaps",
+  "description": "After a client call, turn the owner's notes from the call into a short recap email for the client and a list of action items",
+  "services": ["google"],
+  "settings": {
+    "TONE": "how the recap should sound, in a few words",
+    "SIGN_OFF": "how the owner signs off an email",
+    "SEND": "send the recap to the client (true) or keep it as a draft for the owner (false)",
+    "MAX_PER_RUN": "how many calls it recaps at most in one run"
+  }
+}

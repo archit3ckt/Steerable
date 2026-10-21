@@ -1,0 +1,13 @@
+{
+  "title": "Testimonial requests",
+  "description": "A week after a client pays an invoice in Stripe for a finished piece of work, ask them for a short testimonial about working with the owner",
+  "services": ["stripe", "google"],
+  "settings": {
+    "MIN_AMOUNT": "invoices under this much (in their currency) don't lead to a request",
+    "AFTER_DAYS": "days after the payment before asking",
+    "ASK_EVERY_DAYS": "days before the same client can be asked again",
+    "SKIP": "addresses or domains never asked",
+    "MESSAGE": "the request, in the owner's voice; {name} is filled in",
+    "SEND": "send the request (true) or keep it as a draft for the owner (false)"
+  }
+}

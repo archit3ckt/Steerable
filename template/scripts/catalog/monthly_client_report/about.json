@@ -1,0 +1,10 @@
+{
+  "title": "Monthly client report",
+  "description": "At the start of each month, sum up last month per client for the owner: meetings and hours from the calendar, emails exchanged, and what was invoiced",
+  "services": ["google", "stripe"],
+  "settings": {
+    "CLIENTS": "client names for domains or addresses, like {\"acme.com\": \"Acme\"}; others are named after their domain",
+    "SKIP": "addresses or domains that aren't clients (colleagues, suppliers)",
+    "MIN_MEETINGS": "meetings in the month before someone counts as a client (when nothing was invoiced)"
+  }
+}

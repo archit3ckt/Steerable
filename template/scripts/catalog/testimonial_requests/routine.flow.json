@@ -1,0 +1,7 @@
+{"steps": [
+  {"kind": "trigger", "label": "Every week"},
+  {"kind": "read", "label": "Find invoices clients paid lately", "service": "stripe"},
+  {"kind": "think", "label": "Pick clients not asked lately"},
+  {"kind": "send", "label": "Ask for a testimonial, or keep it as a draft for you", "service": "google", "detail": "Drafts unless you've said to send them"},
+  {"kind": "send", "label": "Tell you who was asked"}
+]}

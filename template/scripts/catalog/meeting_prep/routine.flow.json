@@ -1,0 +1,7 @@
+{"steps": [
+  {"kind": "trigger", "label": "Every morning"},
+  {"kind": "read", "label": "Look at your calendar for upcoming meetings", "service": "google"},
+  {"kind": "read", "label": "Find your last meeting and recent emails with each person", "service": "google"},
+  {"kind": "save", "label": "Keep a brief for each meeting in the library"},
+  {"kind": "send", "label": "Send you the day's briefs"}
+]}

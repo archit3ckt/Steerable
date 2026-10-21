@@ -1,0 +1,8 @@
+{"steps": [
+  {"kind": "trigger", "label": "A few times a day"},
+  {"kind": "read", "label": "Find call notes waiting for a recap"},
+  {"kind": "think", "label": "Write the recap and pick out the action items"},
+  {"kind": "save", "label": "Keep the action items in the library"},
+  {"kind": "send", "label": "Send the recap, or keep it as a draft for you", "service": "google", "detail": "Drafts unless you've said to send them"},
+  {"kind": "send", "label": "Tell you which recaps are ready"}
+]}

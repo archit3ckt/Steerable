@@ -1,0 +1,13 @@
+{
+  "title": "Proposal follow-ups",
+  "description": "Nudge prospects who got a proposal or quote from the owner by email and haven't answered, once after a few days and once more later",
+  "services": ["google"],
+  "settings": {
+    "WORDS": "words that mark a sent email as a proposal (in its subject or text); a PDF attached counts too",
+    "NUDGE_AFTER_DAYS": "days after the proposal for the first and the second nudge",
+    "LOOK_BACK_DAYS": "how far back to look at sent proposals",
+    "SKIP": "addresses or domains never nudged",
+    "MESSAGES": "the first and second nudge, in the owner's voice; {name} and {subject} are filled in",
+    "SEND": "send the nudges (true) or keep them as drafts for the owner (false)"
+  }
+}

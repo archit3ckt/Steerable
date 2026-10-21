@@ -1,0 +1,8 @@
+{"steps": [
+  {"kind": "trigger", "label": "Every few hours"},
+  {"kind": "read", "label": "Read new emails from people you haven't written to", "service": "google"},
+  {"kind": "think", "label": "Pick out the ones asking to work with you"},
+  {"kind": "save", "label": "Keep each lead in the library"},
+  {"kind": "send", "label": "Reply, or keep a reply as a draft for you", "service": "google", "detail": "Drafts unless you've said to send them"},
+  {"kind": "send", "label": "Tell you about new leads"}
+]}

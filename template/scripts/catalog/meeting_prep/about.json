@@ -1,0 +1,10 @@
+{
+  "title": "Meeting prep",
+  "description": "Before each upcoming call or meeting with someone outside the business, prepare a short brief: who they are, when the owner last met them, and their recent emails together",
+  "services": ["google"],
+  "settings": {
+    "HOURS_AHEAD": "how far ahead to prepare briefs, in hours",
+    "EMAILS_PER_PERSON": "how many recent emails with each person go in the brief",
+    "SKIP": "addresses or domains that don't need a brief (colleagues, family)"
+  }
+}

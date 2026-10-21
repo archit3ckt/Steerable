@@ -1,0 +1,7 @@
+{"steps": [
+  {"kind": "trigger", "label": "Every weekday morning"},
+  {"kind": "read", "label": "Find proposals you sent", "service": "google"},
+  {"kind": "think", "label": "Pick the ones with no answer, due a nudge"},
+  {"kind": "send", "label": "Send a nudge, or keep it as a draft for you", "service": "google", "detail": "Drafts unless you've said to send them"},
+  {"kind": "send", "label": "Tell you who's been nudged"}
+]}
