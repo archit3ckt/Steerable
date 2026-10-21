@@ -77,6 +77,8 @@ export type DashboardActions = {
   setDecideSmall?(on: boolean): Promise<ActionResult>;
   /** Take back a small decision settled for the owner. */
   undoSettled?(id: string): Promise<ActionResult>;
+  /** Take back something the owner signed. */
+  undoSigned?(id: string): Promise<ActionResult>;
   setRoutinePaused(routineId: string, paused: boolean): Promise<ActionResult>;
   /** "Run now": one run of a routine that's switched on. */
   runRoutine(routineId: string): Promise<ActionResult>;

@@ -8,6 +8,7 @@ import type {
   Company,
   CompanyBackend,
   Decision,
+  SignedDecision,
   Goal,
   Routine,
   RoutineRun,
@@ -36,6 +37,7 @@ const DAY = 24 * HOUR;
 
 type State = {
   decisions: Decision[];
+  signed: SignedDecision[];
   timeline: TimelineEvent[];
   routines: Routine[];
   todos: Todo[];
@@ -66,6 +68,7 @@ function seed(company: Company, now: number): State {
     dashboards: sampleDashboards(now),
     dashboardAsks: [],
     checks: new Map(),
+    signed: [{ id: "s-reorder", title: "Let \u201cCafe reorder reminders\u201d run", kind: "switch_on", at: ago(1 * DAY + 6 * HOUR) }],
     decisions: [
       {
         id: "d-hotel",
@@ -135,6 +138,19 @@ function seed(company: Company, now: number): State {
           { label: "Your records", value: "2 new" },
         ],
         trace: "sample-practice",
+        display: "authorize",
+        authorize: {
+          title: "Let \u201cFollow up with new wholesale leads\u201d run",
+          does: [
+            "Each morning it reads new enquiries from cafes, skips the ones you've already written to, and sends the rest a short hello with photos of cafes we look after.",
+            "It runs every morning.",
+          ],
+          limits: ["One hello per cafe, only to cafes that wrote to you first.", "Its first runs are watched: anything it can't undo is checked before it happens."],
+          wont: ["It never quotes prices or promises delivery dates."],
+          undo: "Switch it off any time, under Signed by you or on its page. What it already did stays done.",
+          record: "In its practice run it would have written to 2 cafes and skipped 1 you'd already contacted.",
+          optionId: "switch_on",
+        },
         goal: "40 cafe accounts",
         createdAt: ago(20 * MIN),
       },
@@ -150,14 +166,24 @@ function seed(company: Company, now: number): State {
           why: "Most of the people who asked come in on weekends, and Saturday mornings are calm before noon.",
         },
         options: [
-          { id: "saturday", label: "Saturday morning", outcome: "I'll invite the 18 who asked, then open the last spots to everyone", tone: "primary" },
-          { id: "wednesday", label: "Wednesday evening", outcome: "After work, for people who can't come on weekends", tone: "neutral" },
-          { id: "later", label: "Not yet", tone: "quiet" },
+          {
+            id: "saturday", label: "Saturday morning", outcome: "I'll invite the 18 who asked, then open the last spots to everyone", tone: "primary",
+            pros: ["Most who asked come in on weekends", "Calm in the shop before noon"], cons: ["Busy afternoon right after"], tags: ["12 places", "2 hours"],
+          },
+          {
+            id: "wednesday", label: "Wednesday evening", outcome: "After work, for people who can't come on weekends", tone: "neutral",
+            pros: ["Reaches people who work weekends", "The shop is closed: no interruptions"], cons: ["Fewer of those who asked can come", "You'd stay late"], tags: ["12 places", "Closing time"],
+          },
+          {
+            id: "later", label: "Not yet", tone: "quiet",
+            pros: ["Time to get the table and plants ready"], cons: ["18 people keep waiting", "Spring interest fades"], tags: ["Ask again in a month"],
+          },
         ],
         facts: [
           { label: "Asked for it", value: "18 customers" },
           { label: "Room for", value: "12 people" },
         ],
+        display: "choice",
         goal: "200 regular customers",
         createdAt: ago(1 * DAY + 3 * HOUR),
       },
@@ -348,6 +374,16 @@ export function mockBackend(company: Company): CompanyBackend {
       };
     },
 
+    async signedDecisions() {
+      return state().signed;
+    },
+
+    async undoSigned(signedId) {
+      const item = state().signed.find((s) => s.id === signedId && !s.undone);
+      if (!item) throw new AgentError("That's no longer there to undo.", 410);
+      item.undone = new Date().toISOString();
+    },
+
     async decisions() {
       return [...state().decisions].sort(
         (a, b) => Number(b.urgent) - Number(a.urgent) || Date.parse(b.createdAt) - Date.parse(a.createdAt),
@@ -361,6 +397,9 @@ export function mockBackend(company: Company): CompanyBackend {
       if (!decision || !option) throw new Error("That decision is no longer open.");
       if (option.input && !option.input.optional && !note?.trim()) throw new AgentError("Say what you'd like changed.", 400);
       s.decisions = s.decisions.filter((d) => d.id !== decisionId);
+      if (decision.authorize && optionId === decision.authorize.optionId) {
+        s.signed.unshift({ id: id(), title: decision.authorize.title, kind: "switch_on", at: new Date().toISOString() });
+      }
       if (decision.id === "d-newsletter") {
         const routine = s.routines.find((r) => r.id === "r-newsletter");
         if (routine) routine.status = optionId === "approve" ? "running" : "paused";

@@ -60,7 +60,31 @@ export type DecisionOption = {
   tone?: "primary" | "neutral" | "quiet";
   /** Picking it asks the owner for a few words ("What should it do differently?"), sent with decide(). */
   input?: { placeholder: string; optional?: boolean };
+  /** For a choice of direction (display "choice"): its case, a few short points each, and short facts. */
+  pros?: string[];
+  cons?: string[];
+  tags?: string[];
 };
+
+/**
+ * Something the owner authorizes by signing (display "authorize"): switching a routine on, letting it
+ * run on its own. Read like what it is, then signed with optionId; the decision's other options stay.
+ */
+export type Authorization = {
+  title: string;
+  /** What it will do, a sentence or two each. */
+  does: string[];
+  limits: string[];
+  wont: string[];
+  /** How to take it back. */
+  undo: string;
+  /** How it's done so far (its practice or watched runs). */
+  record?: string;
+  optionId: string;
+};
+
+/** Something the owner signed; undo takes it back (the routine is switched off, or watched again). */
+export type SignedDecision = { id: string; title: string; kind: "switch_on" | "trust"; at: ISODate; undone?: ISODate };
 
 export type Decision = {
   id: string;
@@ -84,6 +108,9 @@ export type Decision = {
   trace?: string;
   goal?: string;
   createdAt: ISODate;
+  /** How to show it: options as cards to compare ("choice"), or a document to sign ("authorize", with `authorize`). Absent: a quick one. */
+  display?: "choice" | "authorize";
+  authorize?: Authorization;
 };
 
 export type Actor = "coo" | "you" | "autopilot";
@@ -698,6 +725,10 @@ export interface CompanyBackend {
   settledDecisions?(): Promise<SettledDecision[]>;
   /** Take one back: it returns to their decisions. */
   undoSettled?(id: string): Promise<void>;
+  /** What the owner authorized by signing, newest first. */
+  signedDecisions?(): Promise<SignedDecision[]>;
+  /** Take a signature back: the routine is switched off, or watched again. */
+  undoSigned?(id: string): Promise<void>;
   /** The owner's choices about how the COO works with them. */
   preferences?(): Promise<Preferences>;
   setPreferences?(changes: Partial<Preferences>): Promise<Preferences>;

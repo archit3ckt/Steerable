@@ -25,6 +25,14 @@ export async function setDecideSmall(on: boolean) {
   return result;
 }
 
+export async function undoSigned(id: string) {
+  const result = await dashboardAction(backend, async (b) => {
+    await b.undoSigned?.(String(id));
+  });
+  refresh();
+  return result;
+}
+
 export async function undoSettled(id: string) {
   const result = await dashboardAction(backend, async (b) => {
     await b.undoSettled?.(String(id));

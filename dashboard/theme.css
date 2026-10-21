@@ -137,6 +137,33 @@
   --shadow-lift: var(--shadow-lift);
 
   --animate-rise: rise 0.4s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+  /* Signing (Decisions): the seal coming down, and the signature written in. */
+  --animate-stamp: stamp 0.55s cubic-bezier(0.2, 1.4, 0.4, 1) both;
+  --animate-write: write 1.1s ease-out both;
+}
+
+@keyframes stamp {
+  0% {
+    opacity: 0;
+    transform: rotate(-16deg) scale(2.4);
+  }
+  60% {
+    opacity: 1;
+    transform: rotate(-9deg) scale(0.94);
+  }
+  100% {
+    opacity: 1;
+    transform: rotate(-10deg) scale(1);
+  }
+}
+
+@keyframes write {
+  from {
+    clip-path: inset(0 100% 0 0);
+  }
+  to {
+    clip-path: inset(0 0 0 0);
+  }
 }
 
 @keyframes rise {
