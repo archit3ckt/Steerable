@@ -1,9 +1,9 @@
 "use client";
 
 import { ArrowDown, ArrowUp, ChevronLeft, ChevronRight, Maximize2 } from "lucide-react";
-import { Fragment, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import type { CellValue, LibraryColumn, LibraryPage } from "./backend/types";
-import { CellEditor, CellView, ICONS, MIN_REM, STRETCHES, display, number } from "./library-cells";
+import { CellEditor, CellView, ICONS, MIN_REM, STRETCHES, display, isLongText, number } from "./library-cells";
 import type { ViewContext } from "./library-workspace";
 import { cx } from "./ui";
 
@@ -12,9 +12,35 @@ import { cx } from "./ui";
  * text columns sharing the spare width, cells edited in place, rows grouped under a header with
  * their count, number sums at the foot, and pages of rows.
  */
+type Place = { top: number; left: number; width: number };
+
+/** Where a long text's editor floats: over its cell, at least 24rem wide, and on screen. */
+function place(cell: HTMLElement): Place {
+  const r = cell.getBoundingClientRect();
+  const width = Math.min(Math.max(r.width, 384), 576, window.innerWidth - 16);
+  return { top: r.top, left: Math.max(8, Math.min(r.left, window.innerWidth - width - 8)), width };
+}
+
 export function GridView({ ctx, page, openId }: { ctx: ViewContext; page: LibraryPage; openId?: string }) {
   const { shown, config, nav, pageSize, readOnly } = ctx;
-  const [editing, setEditing] = useState<{ row: string; col: string } | null>(null);
+  // `at`: where the cell is on screen, for long text, whose editor floats above the page over it (the
+  // grid scrolls, and would cut a taller box off).
+  const [editing, setEditing] = useState<{ row: string; col: string; at?: Place } | null>(null);
+  const floating = Boolean(editing?.at);
+  useEffect(() => {
+    if (!floating) return;
+    // A floating editor doesn't move with the page: scrolling or resizing saves it and closes it.
+    const leave = (e: Event) => {
+      if (e.target instanceof Element && e.target.closest("[data-floating-editor]")) return;
+      (document.activeElement as HTMLElement | null)?.blur();
+    };
+    window.addEventListener("scroll", leave, true);
+    window.addEventListener("resize", leave);
+    return () => {
+      window.removeEventListener("scroll", leave, true);
+      window.removeEventListener("resize", leave);
+    };
+  }, [floating]);
   const [overlay, setOverlay] = useState<Record<string, Record<string, CellValue>>>({});
   const [seen, setSeen] = useState(page);
   if (seen !== page) {
@@ -126,17 +152,17 @@ export function GridView({ ctx, page, openId }: { ctx: ViewContext; page: Librar
                           key={c.id}
                           dir="auto"
                           tabIndex={editable ? 0 : undefined}
-                          onClick={() => {
+                          onClick={(e) => {
                             if (!editable) return c.type === "files" && !readOnly ? ctx.openRow(r.id) : undefined;
                             if (isEditing) return;
                             if (c.type === "checkbox") return saveCell(r.id, c, !value);
-                            setEditing({ row: r.id, col: c.id });
+                            setEditing({ row: r.id, col: c.id, at: isLongText(c, value) ? place(e.currentTarget) : undefined });
                           }}
                           onKeyDown={(e) => {
                             if (!editable || isEditing || (e.key !== "Enter" && e.key !== " ")) return;
                             e.preventDefault();
                             if (c.type === "checkbox") saveCell(r.id, c, !value);
-                            else setEditing({ row: r.id, col: c.id });
+                            else setEditing({ row: r.id, col: c.id, at: isLongText(c, value) ? place(e.currentTarget) : undefined });
                           }}
                           style={{ left: i === 0 ? "3.5rem" : undefined }}
                           className={cx(
@@ -148,8 +174,15 @@ export function GridView({ ctx, page, openId }: { ctx: ViewContext; page: Librar
                           )}
                           title={!isEditing && typeof value === "string" && value.length > 30 ? value : undefined}
                         >
-                          {isEditing ? (
-                            <CellEditor col={c} value={value} onSave={(v) => saveCell(r.id, c, v)} onCancel={() => setEditing(null)} className={c.type === "longtext" ? "absolute top-0 left-0 z-30 w-[24rem] shadow-lg" : undefined} />
+                          {isEditing && editing.at ? (
+                            <>
+                              <span className="invisible block truncate">{String(value ?? "") || "\u00a0"}</span>
+                              <div data-floating-editor style={{ position: "fixed", ...editing.at }} className="z-40">
+                                <CellEditor col={c} value={value} grow onSave={(v) => saveCell(r.id, c, v)} onCancel={() => setEditing(null)} className="shadow-lg" />
+                              </div>
+                            </>
+                          ) : isEditing ? (
+                            <CellEditor col={c} value={value} onSave={(v) => saveCell(r.id, c, v)} onCancel={() => setEditing(null)} />
                           ) : (
                             <CellView col={c} value={value} related={ctx.related} files={ctx.files} filesUrl={ctx.filesUrl} />
                           )}

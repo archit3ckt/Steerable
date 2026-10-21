@@ -1,7 +1,7 @@
 "use client";
 
 import { Calendar, CheckSquare, CircleDot, Hash, Link2, Paperclip, Tags, Text, Type, User, Waypoints } from "lucide-react";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import type { CellValue, LibraryColumn, LibraryFileInfo } from "./backend/types";
 import { Pill, cx, type Tone } from "./ui";
 
@@ -142,12 +142,43 @@ export function CellView({
 }
 
 /** An input for one cell. Saves on Enter or when it loses focus; Escape cancels. Tags are written "a, b". */
+/** Text long enough that a one-line cell can't show it: the grid opens it in a box that grows to fit. */
+export function isLongText(col: LibraryColumn, value: CellValue | undefined): boolean {
+  if (!["text", "longtext", "link", "person"].includes(col.type) || typeof value !== "string") return col.type === "longtext";
+  return col.type === "longtext" || value.length > 40 || value.includes("\n");
+}
+
+const GROW_MAX_PX = 288; // about 12 lines, then it scrolls
+
+/** A textarea as tall as its text, up to GROW_MAX_PX. */
+function GrowingText(props: React.TextareaHTMLAttributes<HTMLTextAreaElement> & { value: string }) {
+  const ref = useRef<HTMLTextAreaElement>(null);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${Math.min(el.scrollHeight + 2, GROW_MAX_PX)}px`;
+  }, [props.value]);
+  return (
+    <textarea
+      ref={ref}
+      rows={1}
+      {...props}
+      onFocus={(e) => {
+        const end = e.currentTarget.value.length; // the cursor at the end, as in a one-line box
+        e.currentTarget.setSelectionRange(end, end);
+      }}
+    />
+  );
+}
+
 export function CellEditor({
   col,
   value,
   onSave,
   onCancel,
   autoFocus = true,
+  grow = false,
   className,
 }: {
   col: LibraryColumn;
@@ -155,6 +186,8 @@ export function CellEditor({
   onSave: (value: CellValue) => void;
   onCancel?: () => void;
   autoFocus?: boolean;
+  /** Show all of a long text, in a box that grows with it (the grid's active cell). */
+  grow?: boolean;
   className?: string;
 }) {
   const initial = value === null || value === undefined ? "" : Array.isArray(value) ? value.join(", ") : String(value);
@@ -200,6 +233,12 @@ export function CellEditor({
           </option>
         ))}
       </select>
+    );
+  }
+  if (grow && ["text", "longtext", "link", "person"].includes(col.type)) {
+    return (
+      <GrowingText autoFocus={autoFocus} value={text} onChange={(e) => setText(e.target.value)} onBlur={commit} onKeyDown={keys}
+        className={cx(base, "resize-none leading-6 whitespace-pre-wrap break-words")} dir="auto" />
     );
   }
   if (col.type === "longtext") {
