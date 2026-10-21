@@ -216,7 +216,7 @@ export function libraryOps(tables: () => Table[]) {
         config.by = by.name;
       }
       if (existing) return Object.assign(existing, { name: view.name?.trim() || existing.name, config });
-      const made: LibraryView = { id: `v_${Math.random().toString(36).slice(2, 8)}`, name: view.name?.trim() || { grid: "Grid", kanban: "Board", calendar: "Calendar" }[type], type, config };
+      const made: LibraryView = { id: `v_${Math.random().toString(36).slice(2, 8)}`, name: view.name?.trim() || { grid: "Grid", kanban: "Board", calendar: "Calendar", cards: "Cards" }[type], type, config };
       t.views.push(made);
       return made;
     },

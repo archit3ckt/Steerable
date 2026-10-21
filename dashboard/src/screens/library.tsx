@@ -20,6 +20,7 @@ import { Card, Empty, PageHeader, Skeleton, cx } from "../ui";
 type SearchParams = Promise<Record<string, string | string[] | undefined>>;
 
 const PAGE_SIZE = 100;
+const CARDS_PAGE = 48; // cards are bigger than rows: fewer to a page
 const LANE_SIZE = 50; // cards read per board column
 
 /**
@@ -520,6 +521,13 @@ async function TableView({ host, id, searchParams }: { host: DashboardHost; id: 
     Object.assign(related, page?.related);
     total = page?.total ?? 0;
     body = { kind: "calendar", by: cfg.by, month, start, today, rows: page?.rows ?? [], undated: undated?.total ?? 0 };
+  } else if (view.type === "cards") {
+    const page = await backend.libraryTable(tableId, { ...base, offset: nav.offset, limit: CARDS_PAGE });
+    if (!page) notFound();
+    Object.assign(related, page.related);
+    Object.assign(files, page.files);
+    total = page.total;
+    body = { kind: "cards", page };
   } else {
     const page = await backend.libraryTable(tableId, { ...base, group: cfg.group, archived: nav.archived, offset: nav.offset, limit: PAGE_SIZE });
     if (!page) notFound();
@@ -552,7 +560,7 @@ async function TableView({ host, id, searchParams }: { host: DashboardHost; id: 
         detail={detail}
         cooName={company.cooName}
         now={now}
-        pageSize={PAGE_SIZE}
+        pageSize={view.type === "cards" ? CARDS_PAGE : PAGE_SIZE}
         filesUrl={host.chatFilesUrl}
         libraryFilesUrl={host.libraryFilesUrl}
         actions={host.actions}

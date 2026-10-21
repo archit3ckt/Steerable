@@ -53,7 +53,7 @@ from common import ROOT, now_iso
 
 DB = ROOT / "library.db"
 TYPES = ("text", "longtext", "number", "date", "status", "person", "link", "checkbox", "relation", "tags", "files")
-VIEW_TYPES = ("grid", "kanban", "calendar")
+VIEW_TYPES = ("grid", "kanban", "calendar", "cards")
 MAX_VIEWS = 30
 LIMITS = {"text": 1000, "longtext": 20000, "person": 200, "link": 2000}
 DETAIL_DAYS = 90  # how long a change's old and new values are kept (what a run's change table shows)
@@ -637,7 +637,7 @@ class Table:
 
     def _view_config(self, kind: str, config: dict) -> dict:
         """A view's settings, checked: q, sort, dir, where, hidden, group, by (kanban: a status column;
-        calendar: a date column)."""
+        calendar: a date column). Cards show each row as a card (a picture from its files, if any)."""
         if kind not in VIEW_TYPES:
             raise LibraryError(f"A view is one of {', '.join(VIEW_TYPES)}.")
         config = config if isinstance(config, dict) else {}
@@ -682,6 +682,8 @@ class Table:
         """Add a view (view_id None) or change one's name or settings."""
         if _dry():
             return {"id": "dry", "name": name or "", "type": kind or "grid", "config": config or {}}
+        if not view_id:
+            self.views()  # a new table's "All rows" grid comes first, even when the first view is added in code
         with connect() as con:
             if view_id:
                 v = con.execute("SELECT * FROM views WHERE id = ? AND table_id = ?", (view_id, self.id)).fetchone()

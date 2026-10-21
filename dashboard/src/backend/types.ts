@@ -265,7 +265,7 @@ export type LibraryViewConfig = {
   by?: string;
 };
 /** A tab over a table: a grid, a board (kanban) by a status, or a calendar by a date. */
-export type LibraryView = { id: string; name: string; type: "grid" | "kanban" | "calendar"; config: LibraryViewConfig };
+export type LibraryView = { id: string; name: string; type: "grid" | "kanban" | "calendar" | "cards"; config: LibraryViewConfig };
 export type LibraryComment = {
   id: string;
   who: "you" | "coo" | "autopilot";

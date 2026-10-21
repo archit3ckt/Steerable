@@ -71,7 +71,7 @@ APP_NOTES = (
     "as its schedule would, and the schedule stays as it was. "
     "To post to their social accounts, use .venv/bin/python scripts/social.py (see CLAUDE.md): it waits for their OK in Decisions. "
     "Records they'd want to look up (leads, orders, job openings) go in the library: .venv/bin/python scripts/library.py "
-    "(each table can have views the owner sees as tabs: library.py view <table> <name> --type kanban|calendar|grid). "
+    "(each table can have views the owner sees as tabs: library.py view <table> <name> --type kanban|calendar|cards|grid). "
     "Books the owner taught you are searchable: .venv/bin/python scripts/books.py search \"<words>\" (cite the book and chapter). "
     "Small choices that are easy to undo (a format, an order, a time, which of two similar options, a working detail) are yours: "
     "decide them, mention them in passing if at all, and get on with it; don't ask. "

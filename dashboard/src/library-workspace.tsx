@@ -7,6 +7,7 @@ import {
   Calendar as CalendarIcon,
   Columns3,
   Download,
+  LayoutGrid,
   EyeOff,
   Filter,
   Layers,
@@ -24,6 +25,7 @@ import type { CellValue, LibraryColumn, LibraryFileInfo, LibraryPage, LibraryRow
 import type { DashboardActions } from "./host";
 import { BoardView } from "./library-board";
 import { CalendarView } from "./library-calendar";
+import { CardsView } from "./library-cards";
 import { ICONS, Menu, menuItem, number } from "./library-cells";
 import { GridView } from "./library-grid";
 import { RowPanel } from "./library-panel";
@@ -36,6 +38,7 @@ export type LibraryNav = { view: string; q: string; offset: number; row: string;
 /** What the server read for the current view. */
 export type LibraryBody =
   | { kind: "grid"; page: LibraryPage }
+  | { kind: "cards"; page: LibraryPage }
   | { kind: "kanban"; by: string; lanes: { value: string | null; total: number; rows: LibraryRow[] }[] }
   | { kind: "calendar"; by: string; month: string; start: string; today: string; rows: LibraryRow[]; undated: number };
 
@@ -59,8 +62,8 @@ export type ViewContext = {
   readOnly: boolean;
 };
 
-const VIEW_ICON = { grid: Table2, kanban: Columns3, calendar: CalendarIcon } as const;
-const VIEW_WORD = { grid: "Grid", kanban: "Board", calendar: "Calendar" } as const;
+const VIEW_ICON = { grid: Table2, kanban: Columns3, calendar: CalendarIcon, cards: LayoutGrid } as const;
+const VIEW_WORD = { grid: "Grid", kanban: "Board", calendar: "Calendar", cards: "Cards" } as const;
 
 /**
  * One library table, after Teable: views as tabs (a grid, a board by a status, a calendar by a
@@ -286,7 +289,7 @@ export function LibraryWorkspace({
         <Menu label="Add view" icon={<Plus className="size-4" aria-hidden />} className="mb-1 shrink-0 text-ink-3">
           {(close) => (
             <div>
-              {(["grid", "kanban", "calendar"] as const).map((type) => {
+              {(["grid", "kanban", "calendar", "cards"] as const).map((type) => {
                 const Icon = VIEW_ICON[type];
                 const missing = type === "kanban" ? !statusCols.length : type === "calendar" ? !dateCols.length : false;
                 return (
@@ -540,6 +543,7 @@ export function LibraryWorkspace({
 
       <div className={cx((navigating || saving) && "opacity-70 transition-opacity")}>
         {body.kind === "grid" && <GridView ctx={ctx} page={body.page} openId={detail?.id} />}
+        {body.kind === "cards" && <CardsView ctx={ctx} page={body.page} />}
         {body.kind === "kanban" && <BoardView key={view.id} ctx={ctx} by={body.by} lanes={body.lanes} />}
         {body.kind === "calendar" && <CalendarView key={`${view.id}:${body.month}`} ctx={ctx} by={body.by} month={body.month} start={body.start} today={body.today} rows={body.rows} undated={body.undated} />}
       </div>
