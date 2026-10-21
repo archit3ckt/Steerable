@@ -54,11 +54,8 @@ export function ChoiceDecision({
 
   return (
     <article className="animate-rise rounded-3xl border border-line bg-surface p-5 shadow-card sm:p-7">
-      <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <span className="text-[11px] font-semibold tracking-[0.14em] text-ink-3 uppercase">A direction to choose</span>
-        {age && <span className="text-xs text-ink-3">{age}</span>}
-      </div>
-      <h3 className="mt-2 font-display text-3xl leading-tight" dir="auto">{d.title}</h3>
+      {age && <p className="text-end text-xs text-ink-3">{age}</p>}
+      <h3 className="mt-1 font-display text-3xl leading-tight" dir="auto">{d.title}</h3>
       {d.context && <p className="mt-2 text-ink-2" dir="auto">{d.context}</p>}
 
       <div className={cx("mt-6 grid gap-4 sm:grid-cols-2", d.options.length >= 3 && "lg:grid-cols-3")}>
