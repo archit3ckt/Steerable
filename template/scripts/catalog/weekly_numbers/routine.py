@@ -78,7 +78,7 @@ def main() -> None:
     step(1)
     last, prev = week(last_start), week(prev_start)
 
-    step(2)
+    step(2, items=sum(m["payments"] for m in last["money"].values()))
     currencies = sorted(last["money"], key=lambda c: -last["money"][c]["sales"]) or [""]
     lines = [f"**Last week** ({last_start:%d %b} to {this_week - timedelta(days=1):%d %b}):"]
     for cur in currencies:
@@ -91,7 +91,7 @@ def main() -> None:
             lines.append(f"- Refunds: {now['refunds']:,.2f}{unit}" + change(now["refunds"], was["refunds"]))
     lines.append(f"- New customers: {last['customers']}" + change(last["customers"], prev["customers"]))
 
-    step(3)
+    step(3, items=len(currencies))
     for cur in currencies:
         now = last["money"].get(cur) or {"sales": 0.0, "refunds": 0.0, "payments": 0}
         WEEKS.add({"Week": last_start.date().isoformat(), "Currency": cur, "Sales": round(now["sales"], 2),
@@ -100,7 +100,7 @@ def main() -> None:
     text = "\n".join(lines)
     save_report(f"# Weekly numbers\n\n{text}\n")
 
-    step(4)
+    step(4, items=1)
     if SETTINGS["SEND_TO_OWNER"]:
         tell_owner(text)
     top = last["money"].get(currencies[0]) or {"sales": 0.0, "payments": 0}

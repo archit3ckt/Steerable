@@ -16,7 +16,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 import library  # noqa: E402
-from common import act, step, tell_owner  # noqa: E402
+from common import act, each, step, tell_owner  # noqa: E402
 from integrations import IntegrationError, call  # noqa: E402
 
 SETTINGS = {
@@ -67,9 +67,9 @@ def main() -> None:
     step(1)
     invoices = overdue(int(time.time()) - SETTINGS["DAYS_OVERDUE"] * 86400)
 
-    step(2)
+    step(2, items=invoices)
     reminded, would, not_sent, checks = [], [], [], []
-    for inv in invoices:
+    for inv in each(invoices):
         amount = (inv.get("amount_remaining") or inv.get("amount_due") or 0) / 100
         if amount < SETTINGS["MIN_AMOUNT"] or not inv.get("customer_email"):
             continue
@@ -102,10 +102,11 @@ def main() -> None:
         REMINDERS.add({**cells, "Reminders": count + 1, "Last reminded": today.isoformat(), "Status": "Reminded"},
                       key=inv["id"], overwrite=True)
 
-    step(3)
     open_ids = {i["id"] for i in invoices}
+    waiting = REMINDERS.rows(where={"Status": "Reminded"}, limit=50)
+    step(3, items=waiting)
     paid = []
-    for row in REMINDERS.rows(where={"Status": "Reminded"}, limit=50):
+    for row in each(waiting):
         if row["key"] in open_ids:
             continue
         inv = call("stripe", "GET", f"{API}/invoices/{row['key']}")
@@ -113,7 +114,7 @@ def main() -> None:
             paid.append(row["cells"].get("Client") or row["key"])
             REMINDERS.update(row["id"], {"Status": "Paid"})
 
-    step(4)
+    step(4, items=len(reminded) + len(not_sent) + len(checks) + len(paid))
     lines = []
     if reminded:
         lines.append(f"**Reminded {len(reminded)} client{'s' if len(reminded) != 1 else ''} about overdue invoices:**")

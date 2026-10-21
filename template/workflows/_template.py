@@ -23,7 +23,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 from budget import check  # noqa: E402
-from common import act, lesson, log_run, step  # noqa: E402
+from common import act, each, lesson, log_run, step  # noqa: E402
 from state import State  # noqa: E402
 import library  # noqa: E402,F401  (records the owner looks up: library.table(...).add(..., key=...))
 from decide import decide  # noqa: E402
@@ -34,7 +34,9 @@ NAME = Path(__file__).stem
 
 def run(task: str) -> list[dict]:
     """1. Do the work with plain code first. Call check() before any paid model call.
-    Call step(n) as each step of workflows/<name>.flow.json starts (step(1) is the first after the trigger).
+    Call step(n) as each step of workflows/<name>.flow.json starts (step(1) is the first after the trigger),
+    with what reaches it: step(2, items=posts). Go through a list with `for post in each(posts):` so the
+    owner sees how far it's got.
     Records for the owner: library.table(...).add(cells, key=...). Working state: State().seen(key, keep_days=60).
     A lasting lesson about how the owner wants this done: lesson("...")."""
     rows: list[dict] = []

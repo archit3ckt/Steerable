@@ -21,7 +21,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 import library  # noqa: E402
-from common import act, save_draft, step, tell_owner  # noqa: E402
+from common import act, each, save_draft, step, tell_owner  # noqa: E402
 from integrations import call  # noqa: E402
 
 SETTINGS = {
@@ -109,13 +109,13 @@ def main() -> None:
     step(1)
     items = [i for i in waiting(me) if not FOLLOW_UPS.get(i["message"])]
 
-    step(2)
+    step(2, items=items)
     for item in items:
         item["text"] = SETTINGS["MESSAGE"].format(name=first_name(item["to"]), subject=item["subject"])
 
-    step(3)
+    step(3, items=items)
     drafted, sent = [], []
-    for item in items:
+    for item in each(items):
         cells = {"To": item["to"], "Subject": item["subject"], "Sent": item["sent"], "Thread": item["thread"]}
         said = f"{item['to']}: “{item['subject']}” (sent {item['sent']})"
         if SETTINGS["SEND"] and act(f"Send {item['address']} a follow-up about “{item['subject']}”",
@@ -128,9 +128,10 @@ def main() -> None:
         drafted.append(said)
         FOLLOW_UPS.add({**cells, "Status": "Drafted"}, key=item["message"])
 
-    step(4)
+    open_rows = [r for r in FOLLOW_UPS.rows(limit=60) if r["cells"].get("Status") in ("Drafted", "Sent")]
+    step(4, items=open_rows)
     replied = []
-    for row in FOLLOW_UPS.rows(limit=60):
+    for row in each(open_rows):
         if row["cells"].get("Status") not in ("Drafted", "Sent") or not row["cells"].get("Thread"):
             continue
         messages = thread(row["cells"]["Thread"])
@@ -140,7 +141,7 @@ def main() -> None:
             replied.append(row["cells"].get("To") or "")
             FOLLOW_UPS.update(row["id"], {"Status": "Replied"})
 
-    step(5)
+    step(5, items=len(sent) + len(drafted) + len(replied))
     lines = []
     if sent:
         lines.append(f"**Followed up on {len(sent)} email{'s' if len(sent) != 1 else ''} with no reply:**")

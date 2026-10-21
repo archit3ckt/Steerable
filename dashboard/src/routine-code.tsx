@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
-import type { FlowStep } from "./backend/types";
+import type { FlowCounts, FlowProgress, FlowStep } from "./backend/types";
 import { FlowChart, KIND } from "./routine-flow";
 import { cx } from "./ui";
 
@@ -13,12 +13,18 @@ import { cx } from "./ui";
 export function HowItWorks({
   steps,
   current,
+  counts,
+  progress,
+  caption,
   code,
   codeMap,
   codeMapPending,
 }: {
   steps: FlowStep[];
   current: number | null;
+  counts?: FlowCounts;
+  progress?: FlowProgress;
+  caption?: string;
   code?: string;
   codeMap?: [number, number][][] | null;
   codeMapPending?: boolean;
@@ -55,7 +61,7 @@ export function HowItWorks({
         </div>
       )}
       {view === "steps" || code === undefined ? (
-        <FlowChart steps={steps} current={current} numbered={code !== undefined} onSelect={code !== undefined ? openStep : undefined} />
+        <FlowChart steps={steps} current={current} counts={counts} progress={progress} caption={caption} numbered={code !== undefined} onSelect={code !== undefined ? openStep : undefined} />
       ) : (
         <CodeView box={box} code={code} steps={steps} codeMap={codeMap ?? null} pending={Boolean(codeMapPending)} onStep={openStep} />
       )}

@@ -452,18 +452,75 @@ def guard(what: str, detail=None, kind: str = "change") -> None:
 STEPS = CACHE / "running"
 
 
-def step(n: int) -> None:
-    """A routine calls this as it starts step n of its flow chart (workflows/<name>.flow.json,
-    where 0 is the trigger), so the owner's routine page shows the step it's on. Never fails."""
+_flow: dict = {}  # this run's note of where it is: {"step", "at", "counts", "progress"}
+
+
+def _count(items) -> int | None:
+    if isinstance(items, bool) or items is None:
+        return None
+    if isinstance(items, int):
+        return max(0, items)
+    try:
+        return len(items)
+    except TypeError:
+        return None
+
+
+def _note_flow(force: bool = True) -> None:
+    """Write the run's note (STEPS/<routine>.json) for the routine page, which reads it while it runs and
+    the heartbeat keeps its counts in the run log afterwards. Whole, never half-written. Never fails."""
+    if not force and time.monotonic() - _flow.get("_written", 0) < 0.5:
+        return
+    _flow["_written"] = time.monotonic()
     name = os.environ.get("STEERABLE_WORKFLOW") or Path(sys.argv[0]).stem
     try:
         STEPS.mkdir(exist_ok=True)
-        (STEPS / f"{name}.json").write_text(json.dumps({"step": int(n), "at": now_iso()}))
+        tmp = STEPS / f".{name}.{os.getpid()}.tmp"
+        tmp.write_text(json.dumps({k: v for k, v in _flow.items() if not k.startswith("_")}))
+        tmp.replace(STEPS / f"{name}.json")
     except (OSError, ValueError):
         pass
+
+
+def step(n: int, items=None) -> None:
+    """A routine calls this as it starts step n of its flow chart (workflows/<name>.flow.json,
+    where 0 is the trigger), so the owner's routine page shows the step it's on. `items`: what reaches
+    this step (a list, or how many), shown on the arrow into it, like "150". Never fails."""
+    _flow.update(step=int(n), at=now_iso())
+    _flow.setdefault("counts", {})
+    _flow.pop("progress", None)
+    count = _count(items)
+    if count is not None:
+        _flow["counts"][str(int(n))] = count
+    _note_flow()
     import runtrace
 
-    runtrace.event("step", step=n)
+    runtrace.event("step", step=n, **({"count": count} if count is not None else {}))
+
+
+def each(items, step: int | None = None):
+    """Go through items one by one, showing how far it's got on the step it's in ("37 of 150"):
+        for post in each(posts):
+            ...
+    It also counts them onto the arrow into that step, when step() wasn't told already. `step`: which
+    step they belong to (default: the one it's on)."""
+    at = int(step if step is not None else _flow.get("step", 0))
+    total = _count(items)
+    counts = _flow.setdefault("counts", {})
+    if total is not None:
+        counts.setdefault(str(at), total)
+    done = 0
+    _flow["progress"] = {"step": at, "done": 0, "total": total}
+    _note_flow()
+    for item in items:
+        yield item
+        done += 1
+        _flow["progress"] = {"step": at, "done": done, "total": total}
+        _note_flow(force=False)
+    _flow["progress"] = {"step": at, "done": done, "total": total if total is not None else done}
+    if total is None:
+        counts.setdefault(str(at), done)
+    _note_flow()
 
 
 def task_title(text: str) -> str:

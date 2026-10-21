@@ -1149,13 +1149,21 @@ def routine_detail(rid: str) -> dict:
         out["building"] = {"since": b["opened"], "steps": done, **({"change": b["change"]} if b.get("change") else {})}
     doing = _heartbeat_doing()
     if doing.get("routine") == rid:
-        at = None
+        at, marker = None, {}
         try:
             marker = json.loads((STEPS / f"{rid}.json").read_text())
             at = int(marker["step"]) if marker["at"] >= doing["since"] else None
         except (OSError, ValueError, KeyError, TypeError):
-            pass
-        out["runningNow"] = {"since": doing["since"], "step": at}
+            marker = {}
+        live = at is not None  # counts and progress from this run, not one before it
+        out["runningNow"] = {"since": doing["since"], "step": at,
+                             **({"counts": marker["counts"]} if live and marker.get("counts") else {}),
+                             **({"progress": marker["progress"]} if live and marker.get("progress") else {})}
+    # The last run's counts stay on the chart's arrows until the next run.
+    last = next((r for r in reversed(entries) if r.get("workflow") == rid and r.get("script") == "heartbeat"
+                 and r.get("status") in ("ok", "error")), None)
+    if last and last.get("flow"):
+        out["lastFlow"] = {"at": last["ts"], "counts": last["flow"]}
     return out
 
 

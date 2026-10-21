@@ -238,10 +238,15 @@ def run_routine(line: str, text: str, workflow: str, today: str, manual: bool = 
     ok = proc.returncode == 0
     # A watched run the supervisor stopped (common.Held) isn't a crash: the owner hears what was held.
     held = watched and not ok and "common.Held:" in (proc.stderr or "")
+    try:  # how many items reached each step (common.step / each), for the arrows on its flow chart
+        flow = {k: int(v) for k, v in json.loads((STEPS / f"{workflow}.json").read_text()).get("counts", {}).items()}
+    except (OSError, ValueError, AttributeError, TypeError):
+        flow = {}
     (STEPS / f"{workflow}.json").unlink(missing_ok=True)
     changes = library_counts(run)
     log_run("heartbeat", "ok" if ok or held else "error", workflow=workflow, task=text, **({"manual": True} if manual else {}),
-            run=run, **({"changes": changes} if changes else {}), **({"trace": run} if watched else {}),
+            run=run, **({"changes": changes} if changes else {}), **({"flow": flow} if flow else {}),
+            **({"trace": run} if watched else {}),
             **({"held": True} if held else {}), stdout=proc.stdout[-2000:], stderr=proc.stderr[-2000:])
     doing()
     if watched:

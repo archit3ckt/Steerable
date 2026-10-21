@@ -467,6 +467,10 @@ export type RunChanges = {
 };
 
 /** A routine's own page: everything on its card, its steps, and its recent runs. */
+/** Items that reached each step of a flow chart, by step index ("2": 150); steps that didn't say aren't there. */
+export type FlowCounts = Record<string, number>;
+export type FlowProgress = { step: number; done: number; total: number | null };
+
 export type RoutineDetail = Routine & {
   /** Null until its steps are written down. */
   flow: FlowStep[] | null;
@@ -482,8 +486,14 @@ export type RoutineDetail = Routine & {
   runs: RoutineRun[];
   /** It's being set up (built) right now: what the COO has done so far, in plain words. */
   building?: { since: ISODate; steps: string[]; /** An approved change to a running routine, not a new one. */ change?: string };
-  /** It's running right now; step is the index in flow it's on, when the routine reports it. */
-  runningNow?: { since: ISODate; step: number | null };
+  /**
+   * It's running right now; step is the index in flow it's on, when the routine reports it. counts: how
+   * many items reached each step so far (by step index), for the flow chart's arrows; progress: how far
+   * it's got through a list in a step (total null when it can't tell).
+   */
+  runningNow?: { since: ISODate; step: number | null; counts?: FlowCounts; progress?: FlowProgress };
+  /** How many items reached each step in its last run, until the next one starts. */
+  lastFlow?: { at: ISODate; counts: FlowCounts };
   /** Built and tried in a practice run, waiting for the owner to look (the decision's id), maybe as a change. */
   ready?: { trace: string; decision: string; change?: string };
   /** It's watched: runs so far, clean ones in a row, and how many clean ones before the COO asks to stop. */

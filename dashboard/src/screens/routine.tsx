@@ -226,7 +226,16 @@ async function Routine({
       <section>
         <SectionHeader title="How it works" />
         {r.flow ? (
-          <HowItWorks steps={r.flow} current={r.runningNow?.step ?? null} code={r.code} codeMap={r.codeMap} codeMapPending={r.codeMapPending} />
+          <HowItWorks
+            steps={r.flow}
+            current={r.runningNow?.step ?? null}
+            counts={r.runningNow ? r.runningNow.counts : r.lastFlow?.counts}
+            progress={r.runningNow?.progress}
+            caption={!r.runningNow && r.lastFlow ? `Items in its last run, ${ago(r.lastFlow.at, now)}` : undefined}
+            code={r.code}
+            codeMap={r.codeMap}
+            codeMapPending={r.codeMapPending}
+          />
         ) : r.flowPending ? (
           <Card className="p-6">
             <Poll seconds={4} />

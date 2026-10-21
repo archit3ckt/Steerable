@@ -409,7 +409,7 @@ common.save_draft() and common.save_report(); never write, move or delete files 
 until now, it may read them (not delete them) to carry what's in them over on its first run. News the owner
 should act on (new matches, something that needs them) goes to them with common.tell_owner(markdown): at most
 one message per run, only when there's news. Update the flow chart if the steps changed, and call
-common.step(n) at each step. Anything it can't undo goes through common.act() (point 8 of the Workflow standard).
+common.step(n, items=...) at each step (each() for lists it works through). Anything it can't undo goes through common.act() (point 8 of the Workflow standard).
 
 How to work:
 - A git worktree for the change is at: {wt} (branch build/{name}). Edit files ONLY inside it. Change only
@@ -433,7 +433,9 @@ def _how_to_work(name: str, wt: str, task: str) -> str:
   "detail"}}, ...]}}. {flow.GUIDE}
 - As it starts each step of the flow chart, the workflow calls step(n) (from common import step), n being the
   step's index in workflows/{name}.flow.json (0 is the trigger, so start at step(1)). The owner's routine
-  page shows the step it's on while it runs.
+  page shows the step it's on while it runs. Pass what reaches the step: step(2, items=posts) shows "150" on
+  the arrow into it; and go through a list with `for post in each(posts):` (from common import each), which
+  shows how far it's got ("37 of 150") and counts the arrow by itself.
 - News the owner should act on goes to them with common.tell_owner(markdown): at most one message per run,
   only when there's news (new matches, something that needs them). Not a run report: the timeline has that.
 - The workflow must honor the STEERABLE_DRY_RUN=1 environment variable: do everything except
