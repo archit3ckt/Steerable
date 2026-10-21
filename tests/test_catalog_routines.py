@@ -34,7 +34,7 @@ class FakeGateway:
 
             def answer(self, method):
                 parts = urlsplit(self.path)
-                body = self.rfile.read(int(self.headers.get("Content-Length") or 0)) if method == "POST" else b""
+                body = self.rfile.read(int(self.headers.get("Content-Length") or 0)) if method in ("POST", "PUT") else b""
                 dry = self.headers.get("X-Steerable-Dry-Run") == "1"
                 gateway.seen.append({"method": method, "path": parts.path, "query": parse_qs(parts.query), "dry": dry})
                 route = gateway.routes.get((method, parts.path))
@@ -59,6 +59,9 @@ class FakeGateway:
 
             def do_POST(self):
                 self.answer("POST")
+
+            def do_PUT(self):
+                self.answer("PUT")
 
         self.server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
         threading.Thread(target=self.server.serve_forever, daemon=True).start()

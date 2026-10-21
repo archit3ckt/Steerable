@@ -4,7 +4,9 @@ Bluesky and Reddit. Standard library only.
 
 The owner's keys come from the vault (common.env): the COO asks for what's missing with
 `social.py setup <network>`, which puts an "Add …" form in their Decisions, saying where to find it.
-Nothing here is kept in a file the agents can read.
+Nothing here is kept in a file the agents can read. In Steerable Cloud, LinkedIn is a connection
+instead: the owner connects it with one click on the Connections page, posts go through the gateway
+with their sign-in, and nobody is ever asked for a LinkedIn token.
 
 Who decides a post goes out:
 - From the chat, `post` drafts it and puts it in the owner's Decisions ("Post this to
@@ -198,7 +200,36 @@ def post_instagram(text: str, image: Path | None, link: str | None) -> dict:
     return {"id": done["id"], "url": link_out.get("permalink") or "https://www.instagram.com/"}
 
 
+def _post_linkedin_connected(text: str, image: Path | None, link: str | None) -> dict:
+    """Through the owner's connected LinkedIn: the gateway adds their sign-in, nothing here holds it."""
+    import integrations
+
+    api = "https://api.linkedin.com"
+    rest = {"LinkedIn-Version": env("LINKEDIN_VERSION") or "202506", "X-Restli-Protocol-Version": "2.0.0"}
+    try:
+        me = integrations.call("linkedin", "GET", f"{api}/v2/userinfo")
+        author = f"urn:li:person:{me['sub']}"
+        post = {"author": author, "commentary": text + (f"\n\n{link}" if link and link not in text else ""),
+                "visibility": "PUBLIC", "distribution": {"feedDistribution": "MAIN_FEED", "targetEntities": [],
+                                                         "thirdPartyDistributionChannels": []},
+                "lifecycleState": "PUBLISHED", "isReshareDisabledByAuthor": False}
+        if image:
+            up = integrations.call("linkedin", "POST", f"{api}/rest/images", params={"action": "initializeUpload"},
+                                   json={"initializeUploadRequest": {"owner": author}}, headers=rest)
+            integrations.call("linkedin", "PUT", up["value"]["uploadUrl"], data=image.read_bytes(),
+                              headers={"Content-Type": "application/octet-stream"})
+            post["content"] = {"media": {"id": up["value"]["image"]}}
+        integrations.call("linkedin", "POST", f"{api}/rest/posts", json=post, headers=rest)
+    except integrations.IntegrationError as e:
+        if e.connect:
+            raise SocialError("LinkedIn needs connecting again: on the Connections page, one click.") from None
+        raise SocialError(f"LinkedIn said no: {e}") from None
+    return {"id": "", "url": "https://www.linkedin.com/in/me/recent-activity/all/"}
+
+
 def post_linkedin(text: str, image: Path | None, link: str | None) -> dict:
+    if linkedin_connected():
+        return _post_linkedin_connected(text, image, link)
     base, token = _base("SOCIAL_LINKEDIN_BASE", "https://api.linkedin.com"), env("LINKEDIN_TOKEN")
     auth = {"Authorization": f"Bearer {token}"}
     rest = {**auth, "LinkedIn-Version": env("LINKEDIN_VERSION") or "202506", "X-Restli-Protocol-Version": "2.0.0"}
@@ -311,11 +342,43 @@ def reddit_by_hand() -> bool:
     return not all(env(k[0]) for k in NEEDS["reddit"])
 
 
+CONNECT_LINKEDIN = ("Connect LinkedIn first: on the Connections page, one click, nothing to copy. Ask the owner to, "
+                    "then try again.")
+
+
+def _integrations():
+    try:
+        import integrations
+
+        return integrations
+    except Exception:  # noqa: BLE001  outside Steerable: keys only
+        return None
+
+
+def linkedin_connected() -> bool:
+    """LinkedIn connected with one click on the Connections page (Steerable Cloud): no token to paste."""
+    i = _integrations()
+    try:
+        return bool(i) and any(c.get("provider") == "linkedin" and c.get("status") == "ACTIVE" for c in i.connected())
+    except Exception:  # noqa: BLE001
+        return False
+
+
+def linkedin_offered() -> bool:
+    """Steerable offers LinkedIn as a connection here, so the owner never needs a token."""
+    i = _integrations()
+    try:
+        return bool(i) and any(s.get("id") == "linkedin" for s in i.available())
+    except Exception:  # noqa: BLE001
+        return False
+
+
 def missing(networks: list[str]) -> list[tuple]:
-    """The keys still needed for these networks, as (name, label, hint, url). Reddit needs none."""
+    """The keys still needed for these networks, as (name, label, hint, url). Reddit needs none, nor a
+    connected LinkedIn."""
     needed = []
     for n in networks:
-        if n == "reddit":
+        if n == "reddit" or (n == "linkedin" and linkedin_connected()):
             continue
         for group in REQUIRES.get(n, [n]):
             needed += [k for k in NEEDS[group] if not env(k[0]) and k not in needed]
@@ -328,6 +391,10 @@ def setup(network: str) -> list[str]:
         raise SocialError(f"Pick one of: {', '.join(NETWORKS)}.")
     if network == "reddit":
         return []  # nothing to set up: drafts for the owner to post (reddit_by_hand)
+    if network == "linkedin" and (linkedin_connected() or linkedin_offered()):
+        if linkedin_connected():
+            return []
+        raise SocialError(CONNECT_LINKEDIN)
     asked = []
     for name, label, hint, url in missing([network]):
         vault.ask(name, label=label, why=f"So I can post to your {NAMES[network]} when you approve it.", url=url, hint=hint)
@@ -395,6 +462,8 @@ def draft(networks: list[str], text: str, image: str | None = None, link: str | 
          "link": link, "title": title, "subreddit": subreddit, "flair": flair, "why": why, "status": "waiting"}
     check(d)
     if need := missing(networks):
+        if "linkedin" in networks and linkedin_offered() and not linkedin_connected():
+            raise SocialError(CONNECT_LINKEDIN)
         for n in networks:
             setup(n)
         raise SocialError("First I need " + ", ".join(k[1] for k in need) + ". I've asked the owner for it in Decisions; "
