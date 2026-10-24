@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  ChartCandlestick,
   ChartColumn,
   ChartBar,
   ChevronDown,
@@ -44,6 +45,7 @@ const KINDS: { type: DashboardWidgetType; label: string; hint: string; Icon: typ
   { type: "progress", label: "Goal", hint: "Progress toward a number", Icon: Target },
   { type: "funnel", label: "Funnel", hint: "How many get through each stage", Icon: Filter },
   { type: "pace", label: "Pace", hint: "Running total vs last time", Icon: TrendingUp },
+  { type: "candles", label: "Candles", hint: "A price or balance, trading-style", Icon: ChartCandlestick },
 ];
 
 const field = "w-full rounded-lg border border-line bg-surface px-3 py-2 text-sm outline-none focus:border-accent";
@@ -84,7 +86,7 @@ export function DashboardBoard({ dashboard, actions }: { dashboard: DashboardDet
               key={w.id}
               className={cx(
                 "flex min-w-0 flex-col p-5",
-                w.wide ? "sm:col-span-2 lg:col-span-4" : ["bars", "list", "trend", "funnel", "pace"].includes(w.type) ? "sm:col-span-2" : "",
+                w.wide ? "sm:col-span-2 lg:col-span-4" : ["bars", "list", "trend", "funnel", "pace", "candles"].includes(w.type) ? "sm:col-span-2" : "",
               )}
             >
               <div className="mb-3 flex items-start gap-2">
@@ -231,7 +233,16 @@ function WidgetEditor({
         where: Object.fromEntries(d.filters.filter(([k]) => k)),
         wide: d.wide || undefined,
       };
-      if (d.type !== "list") {
+      if (d.type === "candles")
+        Object.assign(spec, {
+          column: d.column ?? numbers[0]?.name,
+          date: d.date || "added",
+          every: d.every ?? "day",
+          last: d.last,
+          volume: d.volume || undefined,
+          averages: d.averages?.length ? d.averages : undefined,
+        });
+      else if (d.type !== "list") {
         spec.measure = d.measure ?? "count";
         if (spec.measure !== "count") spec.column = d.column;
       }
@@ -303,7 +314,20 @@ function WidgetEditor({
               ))}
             </select>,
           )}
+          {d.type === "candles" &&
+            label(
+              "Following",
+              <select className={field} value={d.column ?? numbers[0]?.name ?? ""} onChange={(e) => set({ column: e.target.value })}>
+                {numbers.map((c) => (
+                  <option key={c.name} value={c.name}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>,
+              numbers.length ? "Each candle opens at the period's first value and closes at its last." : "Candles follow a number column, and this table has none.",
+            )}
           {d.type !== "list" &&
+            d.type !== "candles" &&
             label(
               "Counting",
               <select
@@ -381,7 +405,7 @@ function WidgetEditor({
               </select>,
               d.type !== "progress" && d.period ? `${d.type === "bars" ? "Each bar" : "It"} also shows the one before, to compare.` : undefined,
             )}
-          {(d.type === "trend" || d.type === "pace" || ((d.type === "number" || d.type === "progress" || d.type === "bars") && d.period)) &&
+          {(d.type === "trend" || d.type === "pace" || d.type === "candles" || ((d.type === "number" || d.type === "progress" || d.type === "bars") && d.period)) &&
             label(
               "By the date",
               <select className={field} value={d.date ?? "added"} onChange={(e) => set({ date: e.target.value })}>
@@ -413,6 +437,59 @@ function WidgetEditor({
                   value={d.last ?? { day: 14, week: 8, month: 6 }[d.every ?? "week"]}
                   onChange={(e) => set({ last: Number(e.target.value) || undefined })}
                 />,
+              )}
+            </>
+          )}
+          {d.type === "candles" && (
+            <>
+              {label(
+                "One candle per",
+                <select className={field} value={d.every ?? "day"} onChange={(e) => set({ every: e.target.value as Draft["every"], last: undefined })}>
+                  <option value="day">Day</option>
+                  <option value="week">Week</option>
+                  <option value="month">Month</option>
+                </select>,
+              )}
+              {label(
+                "How many",
+                <input
+                  type="number"
+                  min={5}
+                  max={365}
+                  className={field}
+                  value={d.last ?? { day: 90, week: 52, month: 24 }[d.every ?? "day"]}
+                  onChange={(e) => set({ last: Number(e.target.value) || undefined })}
+                />,
+              )}
+              {label(
+                "Volume underneath",
+                <select className={field} value={d.volume ?? ""} onChange={(e) => set({ volume: e.target.value || undefined })}>
+                  <option value="">None</option>
+                  <option value="rows">How many rows</option>
+                  {numbers.map((c) => (
+                    <option key={c.name} value={c.name}>
+                      Total {c.name}
+                    </option>
+                  ))}
+                </select>,
+              )}
+              {label(
+                "Moving averages (optional)",
+                <input
+                  className={field}
+                  placeholder="Like 7, 30"
+                  defaultValue={d.averages?.join(", ") ?? ""}
+                  onChange={(e) =>
+                    set({
+                      averages: e.target.value
+                        .split(/[,\s]+/)
+                        .map(Number)
+                        .filter((n) => Number.isInteger(n) && n >= 2 && n <= 200)
+                        .slice(0, 3),
+                    })
+                  }
+                />,
+                "How many candles each average spans, up to 3.",
               )}
             </>
           )}

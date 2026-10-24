@@ -17,6 +17,8 @@ in SQL with the same filters as the library's views, so it's always up to date a
     {"type": "funnel",   "table": "Leads", "by": "Status", "stages": ["New", "Contacted", "Proposal", "Won"]}
     {"type": "pace",     "table": "Invoices", "measure": "sum", "column": "Amount", "date": "Paid on",
                          "period": "year", "goal": 120000}                         # running total vs last year
+    {"type": "candles",  "table": "Cash", "column": "Balance", "date": "Day", "every": "week",
+                         "averages": [4, 12], "volume": "rows"}                   # open/high/low/close per week
 
 Every widget has a table and may have: title, where ({column: value}, like a view's filters; "" means
 empty), measure (count, sum, average, min, max; all but count need a number column in "column"),
@@ -27,7 +29,10 @@ status, text, person, checkbox, tags or a link to another table) and limit; with
 bar is this period next to the one before. funnel: by (a status column) and stages (its labels in order,
 default all; leave out ones like Lost): each stage counts the rows at it or past it, and rows in other
 statuses are shown apart. pace: period (default year), date, optional goal: the running total through the
-period against the same point in the one before. funnel and pace count rows or sum a number column. list: sort, dir, limit (up
+period against the same point in the one before. funnel and pace count rows or sum a number column.
+candles: column (the number they follow: a price, a balance, a stock level), date, every (day, week,
+month) and last (up to 365): each candle opens at the period's first value and closes at its last; volume
+("rows", or a number column to add up) and averages (up to 3 moving averages of the close, like [7, 30]). list: sort, dir, limit (up
 to 10) and show (up to 4 columns).
 
 They live in the library database (library.db, so they're in the export), shown in the Library.
@@ -51,6 +56,7 @@ A routine telling the owner about figures it already has (not in a table) gives 
 table: {"type": "bars", "title": "Sales by product", "unit": "$", "items": [{"label": "Mugs", "value": 420}]},
 "points": [{"start": "2026-10-05", "value": 3}] with "every" for a trend, "value" (and "previous" with
 "period") for a number, "value" and "goal" for progress. Bars with "period" give each item a "previous";
+candles give "candles": [{"start", "open", "high", "low", "close", "volume"?}] with "every";
 a funnel's items are its stages in order, each counting the rows that reached it; a pace chart's points
 have "value" (null for days still to come) and "previous", with "period" and an optional "goal".
 """
@@ -74,10 +80,11 @@ CREATE TABLE IF NOT EXISTS dashboards (id TEXT PRIMARY KEY, name TEXT NOT NULL, 
 CREATE TABLE IF NOT EXISTS dashboard_asks (id TEXT PRIMARY KEY, dashboard_id TEXT, text TEXT NOT NULL,
     status TEXT NOT NULL, reply TEXT, made TEXT, at TEXT NOT NULL);
 """
-KINDS = ("number", "bars", "trend", "list", "progress", "funnel", "pace")
+KINDS = ("number", "bars", "trend", "list", "progress", "funnel", "pace", "candles")
 MEASURES = ("count", "sum", "average", "min", "max")
 PERIODS = ("week", "month", "quarter", "year")
 EVERY = {"day": 14, "week": 8, "month": 6}  # how many, unless `last` says
+CANDLES = {"day": 90, "week": 52, "month": 24}  # how many, unless `last` says (up to 365)
 PACE_STEP = {"week": "day", "month": "day", "quarter": "week", "year": "week"}  # a pace chart's points
 ADDED = "added"  # any table's rows: the day each was added
 GROUPABLE = ("status", "text", "person", "checkbox", "tags", "relation")
@@ -132,6 +139,8 @@ def _title(w: dict, t: library.Table) -> str:
     """A widget's name when none was given, in plain words."""
     if w["type"] == "list":
         return f"Top {t.name}" if w.get("sort") else f"Latest {t.name}"
+    if w["type"] == "candles":
+        return f"{w['column']} by {w['every']}"
     what = "Rows" if w["measure"] == "count" else f"{w['measure'].capitalize()} of {w['column']}"
     period = f" this {w['period']}" if w.get("period") else ""
     if w["type"] == "bars":
@@ -161,7 +170,7 @@ def clean_widget(con, spec: dict, keep_id: str | None = None) -> dict:
         raise DashboardError("A widget's filters are {column: value}.")
     w["where"] = {_column(t, k)["name"]: ("" if v is None else str(v)[:200]) for k, v in list(where.items())[:10]}
 
-    if kind != "list":
+    if kind not in ("list", "candles"):
         measure = spec.get("measure") or "count"
         if measure not in MEASURES:
             raise DashboardError(f"A widget counts with one of {', '.join(MEASURES)}.")
@@ -171,9 +180,9 @@ def clean_widget(con, spec: dict, keep_id: str | None = None) -> dict:
                 raise DashboardError(f"Say which number column to {measure}.")
             w["column"] = _column(t, spec["column"], ("number",), f"one to {measure}")["name"]
 
-    if kind in ("number", "progress", "trend", "bars", "pace"):
+    if kind in ("number", "progress", "trend", "bars", "pace", "candles"):
         when = spec.get("date")
-        if kind in ("trend", "pace") or spec.get("period"):
+        if kind in ("trend", "pace", "candles") or spec.get("period"):
             when = when or ADDED
         if when:
             w["date"] = ADDED if str(when).lower() in (ADDED, "added on", "when added") else _column(t, when, ("date",), "date")["name"]
@@ -195,6 +204,23 @@ def clean_widget(con, spec: dict, keep_id: str | None = None) -> dict:
         w["limit"] = max(2, min(int(spec.get("limit") or 8), 20))
     if kind in ("funnel", "pace") and w["measure"] not in ("count", "sum"):
         raise DashboardError(f"A {kind} adds things up, so it counts rows or sums a number column.")
+    if kind == "candles":
+        if not spec.get("column"):
+            raise DashboardError("Say which number column the candles follow (a price, a balance, a stock level).")
+        w["column"] = _column(t, spec["column"], ("number",), "one the candles follow")["name"]
+        every = spec.get("every") or "day"
+        if every not in CANDLES:
+            raise DashboardError(f"Candles go by {', '.join(CANDLES)}.")
+        w["every"] = every
+        w["last"] = max(5, min(int(spec.get("last") or CANDLES[every]), 365))
+        volume = spec.get("volume")
+        if volume:
+            w["volume"] = "rows" if str(volume).lower() == "rows" else _column(t, volume, ("number",), "the volume")["name"]
+        averages = spec.get("averages") or []
+        if not isinstance(averages, list) or not all(isinstance(a, int) and 2 <= a <= 200 for a in averages):
+            raise DashboardError("averages is a list of up to 3 lengths, like [7, 30] (candles per average, 2 to 200).")
+        if averages:
+            w["averages"] = sorted(set(averages))[:3]
     if kind == "funnel":
         if not spec.get("by"):
             raise DashboardError("Say which status column the funnel's stages come from.")
@@ -234,7 +260,7 @@ def clean_widget(con, spec: dict, keep_id: str | None = None) -> dict:
         if goal <= 0:
             raise DashboardError("A progress widget needs a goal above zero.")
         w["goal"] = int(goal) if goal.is_integer() else goal
-    if spec.get("wide") is True or (spec.get("wide") is None and kind in ("trend", "list", "pace")):
+    if spec.get("wide") is True or (spec.get("wide") is None and kind in ("trend", "list", "pace", "candles")):
         w["wide"] = True
     title = str(spec.get("title") or "").strip()[:80]
     w["title"] = title or _title(w, t)
@@ -283,6 +309,8 @@ def compute(con, w: dict, today: date | None = None) -> dict:
         filt, args = t._filter(where=w.get("where") or {})
     except library.LibraryError as e:
         raise DashboardError(str(e)) from None
+    if w["type"] == "candles":
+        return _candles(con, t, w, filt, args, today)
     measure = w.get("measure", "count")
     if measure == "count":
         agg = "COUNT(*)"
@@ -437,9 +465,43 @@ def compute(con, w: dict, today: date | None = None) -> dict:
     return out
 
 
+def _candles(con, t: library.Table, w: dict, filt: str, args: list, today: date) -> dict:
+    """Open, high, low and close of a number column per day, week or month (first and last by date,
+    then by when the row was added), with volume if asked. Periods without rows are left out."""
+    col = _column(t, w["column"], ("number",), "one the candles follow")
+    day = "substr(created, 1, 10)" if w.get("date", ADDED) == ADDED else t._cell(_column(t, w["date"], ("date",), "date"))
+    every, last = w["every"], w["last"]
+    end = _bucket(every, today)
+    start = _step(every, end, -(last - 1))
+    vol = w.get("volume")
+    vol_sql = "1" if vol == "rows" else (f"CAST({t._cell(_column(t, vol, ('number',), 'the volume'))} AS REAL)" if vol else "NULL")
+    rows = con.execute(
+        f"SELECT {day} AS d, CAST({t._cell(col)} AS REAL) AS v, {vol_sql} AS vol FROM rows "
+        f"WHERE {filt} AND {day} BETWEEN ? AND ? AND {t._cell(col)} IS NOT NULL ORDER BY d, created LIMIT 50000",
+        [*args, start.isoformat(), today.isoformat()]).fetchall()
+    candles: dict[str, dict] = {}
+    for d, v, n in rows:
+        try:
+            key = _bucket(every, date.fromisoformat(str(d)[:10])).isoformat()
+        except ValueError:
+            continue
+        c = candles.get(key)
+        if c is None:
+            candles[key] = c = {"start": key, "open": v, "high": v, "low": v, "close": v}
+            if vol:
+                c["volume"] = 0
+        c["high"], c["low"], c["close"] = max(c["high"], v), min(c["low"], v), v
+        if vol:
+            c["volume"] += n or 0
+    out: dict = {"candles": list(candles.values())}
+    if col["options"].get("unit"):
+        out["unit"] = col["options"]["unit"]
+    return out
+
+
 # ---------- charts in messages ----------
 
-MESSAGE_KINDS = ("number", "bars", "trend", "progress", "funnel", "pace")
+MESSAGE_KINDS = ("number", "bars", "trend", "progress", "funnel", "pace", "candles")
 CHART_BLOCK = re.compile(r"```chart[ \t]*\n(.*?)\n?```", re.S)
 MAX_ITEMS = 20
 
@@ -491,6 +553,32 @@ def _given(spec: dict) -> dict:
             data["items"].append(item)
         if len(items) > MAX_ITEMS:
             data["more"] = len(items) - MAX_ITEMS
+    elif kind == "candles":
+        every = spec.get("every") or "day"
+        if every not in CANDLES:
+            raise DashboardError(f"Candles go by {', '.join(CANDLES)}.")
+        w["every"] = every
+        given = spec.get("candles")
+        if not isinstance(given, list) or not given:
+            raise DashboardError("Candles with their own figures need candles: [{\"start\": \"2026-10-05\", \"open\": ..., \"high\": ..., \"low\": ..., \"close\": ...}].")
+        clean = []
+        for c in given[-365:]:
+            if not isinstance(c, dict):
+                continue
+            try:
+                date.fromisoformat(str(c.get("start")))
+            except ValueError:
+                raise DashboardError("Each candle's start is a date, like 2026-10-05.") from None
+            got = {"start": str(c["start"]), **{k: _figure(c.get(k), f"Each candle's {k}") for k in ("open", "high", "low", "close")}}
+            if None in got.values():
+                raise DashboardError("Each candle needs open, high, low and close.")
+            if c.get("volume") is not None:
+                got["volume"] = _figure(c["volume"], "Each candle's volume")
+            clean.append(got)
+        data["candles"] = clean
+        averages = spec.get("averages") or []
+        if isinstance(averages, list) and all(isinstance(a, int) and 2 <= a <= 200 for a in averages) and averages:
+            w["averages"] = sorted(set(averages))[:3]
     elif kind == "pace":
         period = spec.get("period") or "year"
         if period not in PERIODS:
@@ -869,6 +957,12 @@ def _says(w: dict) -> str:
         more = f", and {d['more']} more" if d.get("more") else ""
         was = lambda i: f" (was {_num(i['previous'])})" if "previous" in i else ""  # noqa: E731
         return ", ".join(f"{i['label']}: {_num(i['value'])}{was(i)}" for i in d["items"]) + more or "no rows"
+    if w["type"] == "candles":
+        c = d.get("candles") or []
+        if not c:
+            return "nothing yet"
+        hi, lo = max(x["high"] for x in c), min(x["low"] for x in c)
+        return f"{_num(c[-1]['close'])} at the last close ({c[-1]['start']}), between {_num(lo)} and {_num(hi)} over {len(c)} {w.get('every', 'day')}s"
     if w["type"] == "funnel":
         steps = " → ".join(f"{i['label']} {_num(i['value'])}" for i in d["items"])
         outside = ", ".join(f"{o['label']} {_num(o['value'])}" for o in d.get("outside") or [])

@@ -75,7 +75,10 @@ export function chartWords(chart: MessageChart): string {
     says =
       (d.items ?? []).map((i) => `${i.label} ${n(i.value)}${i.previous !== undefined ? ` (was ${n(i.previous)})` : ""}`).join(", ") +
         (d.more ? `, and ${d.more} more` : "") || "nothing yet";
-  else if (chart.type === "funnel") says = (d.items ?? []).map((i) => `${i.label} ${n(i.value)}`).join(" → ");
+  else if (chart.type === "candles") {
+    const c = d.candles ?? [];
+    says = c.length ? `${n(c.at(-1)!.close)} at the last close, between ${n(Math.min(...c.map((x) => x.low)))} and ${n(Math.max(...c.map((x) => x.high)))}` : "nothing yet";
+  } else if (chart.type === "funnel") says = (d.items ?? []).map((i) => `${i.label} ${n(i.value)}`).join(" → ");
   else if (chart.type === "pace") {
     const reached = (d.points ?? []).filter((p) => p.value !== null).at(-1);
     says = reached ? `${n(reached.value)} so far, ${n(reached.previous ?? null)} at this point ${PERIOD_WORDS[chart.period ?? "year"][1]}` : "nothing yet";

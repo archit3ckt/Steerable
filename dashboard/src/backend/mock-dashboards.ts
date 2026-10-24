@@ -127,6 +127,27 @@ function compute(t: Table, w: DashboardWidgetSpec): DashboardWidgetData {
     });
     return out;
   }
+  if (w.type === "candles") {
+    const every = (w.every ?? "day") as "day" | "week" | "month";
+    const end = bucket(every, new Date());
+    const from = step(every, end, -((w.last ?? 90) - 1)).toISOString().slice(0, 10);
+    const unitOf = t.columns.find((c) => c.name === w.column)?.options.unit;
+    const byPeriod = new Map<string, NonNullable<DashboardWidgetData["candles"]>[number]>();
+    const dated = rows
+      .map((r) => ({ r, day: dayOf(r, w), v: r.cells[w.column ?? ""] }))
+      .filter((x): x is { r: Table["rows"][number]; day: string; v: number } => x.day !== null && x.day >= from && typeof x.v === "number")
+      .sort((a, b) => a.day.localeCompare(b.day) || a.r.created.localeCompare(b.r.created));
+    for (const { r, day, v } of dated) {
+      const key = bucket(every, new Date(`${day}T00:00:00Z`)).toISOString().slice(0, 10);
+      const c = byPeriod.get(key) ?? { start: key, open: v, high: v, low: v, close: v, ...(w.volume ? { volume: 0 } : {}) };
+      c.high = Math.max(c.high, v);
+      c.low = Math.min(c.low, v);
+      c.close = v;
+      if (w.volume) c.volume = (c.volume ?? 0) + (w.volume === "rows" ? 1 : Number(r.cells[w.volume] ?? 0));
+      byPeriod.set(key, c);
+    }
+    return { ...(unitOf ? { unit: unitOf } : {}), candles: [...byPeriod.values()] };
+  }
   if (w.type === "funnel") {
     const stages = w.stages ?? t.columns.find((c) => c.name === w.by)?.options.labels ?? [];
     const here = stages.map((st) => measure(rows.filter((r) => r.cells[w.by ?? ""] === st), w) ?? 0);
@@ -306,7 +327,8 @@ export function dashboardOps(library: () => Table[], stored: () => Stored[], ask
       }
       if (!spec || typeof spec !== "object") return { error: "A chart is a description like {\"type\": \"bars\", \"table\": \"Leads\", \"by\": \"Status\"}." };
       const type = spec.type as DashboardWidgetSpec["type"];
-      if (!["number", "bars", "trend", "progress", "funnel", "pace"].includes(type)) return { error: "A chart in a message is a number, bars, trend, progress, funnel or pace." };
+      if (!["number", "bars", "trend", "progress", "funnel", "pace", "candles"].includes(type))
+        return { error: "A chart in a message is a number, bars, trend, progress, funnel, pace or candles." };
       if (typeof spec.table !== "string") {
         // A routine's own figures, as dashboards.py checks them.
         const title = typeof spec.title === "string" ? spec.title.trim() : "";
@@ -317,6 +339,7 @@ export function dashboardOps(library: () => Table[], stored: () => Stored[], ask
             .slice(0, 20)
             .map((i) => ({ label: String(i.label), value: i.value, ...(spec.period && i.previous !== undefined ? { previous: i.previous } : {}) }));
         else if (type === "trend") data.points = ((spec.points as { start: string; value: number }[]) ?? []).slice(-36);
+        else if (type === "candles") data.candles = ((spec.candles as NonNullable<DashboardWidgetData["candles"]>) ?? []).slice(-365);
         else if (type === "pace") {
           data.points = ((spec.points as { start: string; value: number | null; previous: number }[]) ?? []).slice(0, 60);
           data.every = spec.period === "week" || spec.period === "month" ? "day" : "week";

@@ -4,6 +4,7 @@ import { ArrowDown, ArrowUp, Check } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
 import type { CellValue, DashboardWidget, DashboardWidgetData, MessageChart } from "./backend/types";
+import { CandleChart } from "./candle-chart";
 import { PERIOD_WORDS, bucketLabel, bucketTitle, formatValue, niceMax, tableHref } from "./dashboard-format";
 import { cx } from "./ui";
 
@@ -30,6 +31,8 @@ export function WidgetBody({ widget }: { widget: Shown }) {
       return <Funnel widget={widget} data={data} />;
     case "pace":
       return <Pace widget={widget} data={data} />;
+    case "candles":
+      return <CandleChart data={data} every={widget.every ?? "day"} averages={widget.averages} />;
     default:
       return widget.table ? <Rows widget={{ ...widget, table: widget.table }} data={data} /> : null;
   }

@@ -317,7 +317,7 @@ export type BookIdea = {
  * the COO when asked or by the owner in the Library. A widget is a description, never code: what it
  * counts (a table, filters like a view's, a measure) and how it's shown.
  */
-export type DashboardWidgetType = "number" | "bars" | "trend" | "list" | "progress" | "funnel" | "pace";
+export type DashboardWidgetType = "number" | "bars" | "trend" | "list" | "progress" | "funnel" | "pace" | "candles";
 export type DashboardMeasure = "count" | "sum" | "average" | "min" | "max";
 export type DashboardWidgetSpec = {
   type: DashboardWidgetType;
@@ -333,7 +333,7 @@ export type DashboardWidgetSpec = {
   date?: string;
   /** number, progress and bars: only this period (number and bars also show the one before). pace: the period it runs through. */
   period?: "week" | "month" | "quarter" | "year";
-  /** trend: one bar per day, week or month, the last `last` of them. */
+  /** trend: one bar per day, week or month, the last `last` of them. candles: one candle per day, week or month. */
   every?: "day" | "week" | "month";
   last?: number;
   /** funnel: the status's labels it goes through, in order. */
@@ -345,6 +345,10 @@ export type DashboardWidgetSpec = {
   sort?: string;
   dir?: "asc" | "desc";
   show?: string[];
+  /** candles: under them, rows per period ("rows") or a number column added up. */
+  volume?: string;
+  /** candles: moving averages of the close, as how many candles each (up to 3). */
+  averages?: number[];
   /** progress, and optionally pace: the number it's working toward. */
   goal?: number;
   /** The whole width (trend and list are, unless false). */
@@ -374,6 +378,8 @@ export type DashboardWidgetData = {
   more?: number;
   /** trend: each day, week or month by its first day */
   points?: { start: string; value: number | null; previous?: number | null }[];
+  /** candles: a number column's first, highest, lowest and last value per period (periods without rows left out). */
+  candles?: { start: string; open: number; high: number; low: number; close: number; volume?: number }[];
   /** pace: what a point is (a day or a week). Its points are running totals; value is null still to come. */
   every?: "day" | "week";
   /** list */

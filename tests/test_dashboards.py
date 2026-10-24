@@ -134,6 +134,22 @@ pace = dashboards.chart({"type": "pace", "table": "Leads", "measure": "sum", "co
                          "period": "month", "goal": 5000}, TODAY)
 out["pace"] = (pace["title"], pace.get("wide"), len(pace["data"]["points"]), pace["data"]["points"][14], pace["data"]["points"][15]["value"],
                pace["data"]["points"][30]["previous"], pace["data"]["every"], pace["data"]["goal"], dashboards._says(pace))
+# Candles: a price per day, as days and as weeks, with volume and averages.
+price = library.table("Price", columns="Day:date, Price:number($), Units:number")
+for day, p, u in [("2026-10-05", 10, 1), ("2026-10-05", 12, 2), ("2026-10-06", 9, 1), ("2026-10-08", 14, 3),
+                  ("2026-10-12", 13, 1), ("2026-10-14", 11, 2), ("2026-10-14", None, 5), ("2026-08-01", 99, 1)]:
+    price.add({"Day": day, "Price": p, "Units": u})
+cw = dashboards.chart({"type": "candles", "table": "Price", "column": "Price", "date": "Day", "every": "week", "last": 3,
+                       "volume": "Units", "averages": [2, 2, 5]}, TODAY)
+cd = dashboards.chart({"type": "candles", "table": "Price", "column": "Price", "date": "Day", "volume": "rows"}, TODAY)
+out["candles"] = (cw["title"], cw["data"], cw["averages"], [c["start"] for c in cd["data"]["candles"]][-3:],
+                  next(c for c in cd["data"]["candles"] if c["start"] == "2026-10-05"), dashboards._says(cw))
+out["candle_errors"] = [dashboards.chart(x).get("error", "") for x in (
+    {"type": "candles", "table": "Price"}, {"type": "candles", "table": "Price", "column": "Day"},
+    {"type": "candles", "table": "Price", "column": "Price", "averages": [1]},
+    {"type": "candles", "title": "BTC", "candles": [{"start": "2026-10-05", "open": 1, "high": 2, "low": 0.5}]})]
+out["candle_given"] = dashboards.chart({"type": "candles", "title": "BTC", "every": "week", "averages": [3],
+                                        "candles": [{"start": "2026-10-05", "open": 1, "high": 2, "low": 0.5, "close": 1.5, "volume": 7}]})
 out["new_errors"] = [dashboards.chart(x).get("error", "") for x in (
     {"type": "funnel", "table": "Leads", "by": "Value"},
     {"type": "funnel", "table": "Leads", "by": "Status", "stages": ["New", "Maybe"]},
@@ -254,6 +270,23 @@ class DashboardsTest(unittest.TestCase):
             self.assertIn("Status has no Maybe", errors[1])
             self.assertIn("at least two stages", errors[2])
             self.assertIn("adds things up", errors[3])
+            title, data, averages, days, first_day, says = out["candles"]
+            self.assertEqual(title, "Price by week")
+            # Weeks start Monday; the week of Sep 28 has no prices, so it's left out; a row without a price is skipped.
+            self.assertEqual(data, {"unit": "$", "candles": [
+                {"start": "2026-10-05", "open": 10.0, "high": 14.0, "low": 9.0, "close": 14.0, "volume": 7.0},
+                {"start": "2026-10-12", "open": 13.0, "high": 13.0, "low": 11.0, "close": 11.0, "volume": 3.0}]})
+            self.assertEqual(averages, [2, 5])
+            self.assertEqual(days, ["2026-10-08", "2026-10-12", "2026-10-14"])
+            self.assertEqual(first_day, {"start": "2026-10-05", "open": 10.0, "high": 12.0, "low": 10.0, "close": 12.0, "volume": 2})
+            self.assertEqual(says, "11 at the last close (2026-10-12), between 9 and 14 over 2 weeks")
+            errors = out["candle_errors"]
+            self.assertIn("Say which number column the candles follow", errors[0])
+            self.assertIn("Day can't be the one the candles follow", errors[1])
+            self.assertIn("averages is a list", errors[2])
+            self.assertIn("needs open, high, low and close", errors[3])
+            self.assertEqual(out["candle_given"], {"type": "candles", "title": "BTC", "every": "week", "averages": [3], "data": {
+                "candles": [{"start": "2026-10-05", "open": 1, "high": 2, "low": 0.5, "close": 1.5, "volume": 7}]}})
             funnel, compare, pace = out["given_new"]
             self.assertEqual(funnel["data"]["items"][1], {"label": "Bought", "value": 27})
             self.assertEqual(compare["data"]["items"], [{"label": "Mugs", "value": 420, "previous": 300}])
