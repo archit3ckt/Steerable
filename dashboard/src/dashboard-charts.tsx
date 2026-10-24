@@ -11,8 +11,9 @@ import { cx } from "./ui";
 type Shown = DashboardWidget | MessageChart;
 
 /**
- * What a dashboard widget shows. One series each, so the accent marks it and the title names it (no
- * legend); every value is also reachable without hovering: labels, the table it opens, or the grid.
+ * What a dashboard widget shows. Mostly one series, so the accent marks it and the title names it (no
+ * legend); "this vs last" adds the period before in a quiet gray, with a legend. Every value is also
+ * reachable without hovering: labels, the table it opens, or the grid.
  */
 export function WidgetBody({ widget }: { widget: Shown }) {
   const data = widget.data ?? {};
@@ -25,6 +26,10 @@ export function WidgetBody({ widget }: { widget: Shown }) {
       return <Bars widget={widget} data={data} />;
     case "trend":
       return <Trend widget={widget} data={data} />;
+    case "funnel":
+      return <Funnel widget={widget} data={data} />;
+    case "pace":
+      return <Pace widget={widget} data={data} />;
     default:
       return widget.table ? <Rows widget={{ ...widget, table: widget.table }} data={data} /> : null;
   }
@@ -97,11 +102,13 @@ const BAR_ROW = "grid grid-cols-[minmax(0,2fr)_minmax(0,3fr)] items-center gap-3
 function Bars({ widget, data }: { widget: Shown; data: DashboardWidgetData }) {
   const items = data.items ?? [];
   if (!items.length) return <NoRows />;
-  const max = Math.max(...items.map((i) => i.value ?? 0), 0) || 1;
+  const words = widget.period && items.some((i) => i.previous !== undefined) ? PERIOD_WORDS[widget.period] : null;
+  const max = Math.max(...items.map((i) => Math.max(i.value ?? 0, words ? (i.previous ?? 0) : 0)), 0) || 1;
   const by = data.by ?? widget.by ?? "";
   const table = widget.table;
   return (
     <div>
+      {words && <Legend keys={[{ label: capital(words[0]), className: "bg-accent" }, { label: capital(words[1]), className: "bg-chart-previous" }]} />}
       <ul className="-mx-2 space-y-0.5">
         {items.map((item, i) => {
           const bar = (
@@ -109,13 +116,14 @@ function Bars({ widget, data }: { widget: Shown; data: DashboardWidgetData }) {
               <span className="truncate text-sm text-ink-2 group-hover:text-ink" dir="auto">
                 {item.label}
               </span>
-              <span className="flex min-w-0 items-center gap-2">
-                <span
-                  className="h-5 min-w-0.5 shrink-0 rounded-r-[4px] bg-accent transition-opacity group-hover:opacity-80"
-                  style={{ width: `calc((100% - 4.5rem) * ${Math.max(item.value ?? 0, 0) / max})` }}
-                />
-                <span className="text-sm text-ink-2 tabular-nums">{formatValue(item.value, data.unit, true)}</span>
-              </span>
+              {words ? (
+                <span className="flex min-w-0 flex-col gap-0.5">
+                  <BarLine value={item.value} max={max} unit={data.unit} className="h-3.5 bg-accent" />
+                  <BarLine value={item.previous ?? null} max={max} unit={data.unit} className="h-2.5 bg-chart-previous" muted />
+                </span>
+              ) : (
+                <BarLine value={item.value} max={max} unit={data.unit} className="h-5 bg-accent" />
+              )}
             </>
           );
           return (
@@ -123,13 +131,13 @@ function Bars({ widget, data }: { widget: Shown; data: DashboardWidgetData }) {
               {table && item.filter !== undefined ? (
                 <Link
                   href={tableHref(table, { ...widget.where, [by]: item.filter })}
-                  title={`${item.label}: ${formatValue(item.value, data.unit)}. Open these rows`}
+                  title={`${item.label}: ${formatValue(item.value, data.unit)}${words ? `, ${words[1]} ${formatValue(item.previous ?? null, data.unit)}` : ""}. Open these rows`}
                   className={cx("group transition-colors hover:bg-surface-2", BAR_ROW)}
                 >
                   {bar}
                 </Link>
               ) : (
-                <div className={BAR_ROW} title={`${item.label}: ${formatValue(item.value, data.unit)}`}>
+                <div className={BAR_ROW} title={`${item.label}: ${formatValue(item.value, data.unit)}${words ? `, ${words[1]} ${formatValue(item.previous ?? null, data.unit)}` : ""}`}>
                   {bar}
                 </div>
               )}
@@ -146,6 +154,199 @@ function Bars({ widget, data }: { widget: Shown; data: DashboardWidgetData }) {
           <p className="mt-2 text-sm text-ink-3">and {data.more} more</p>
         )
       ) : null}
+    </div>
+  );
+}
+
+const capital = (text: string) => text[0].toUpperCase() + text.slice(1);
+
+/** One bar from the baseline with its value at the tip (text in ink, never the bar's color). */
+function BarLine({ value, max, unit, className, muted }: { value: number | null; max: number; unit?: string; className: string; muted?: boolean }) {
+  return (
+    <span className="flex min-w-0 items-center gap-2">
+      <span
+        className={cx("min-w-0.5 shrink-0 rounded-r-[4px] transition-opacity group-hover:opacity-80", className)}
+        style={{ width: `calc((100% - 4.5rem) * ${Math.max(value ?? 0, 0) / max})` }}
+      />
+      <span className={cx("tabular-nums", muted ? "text-xs text-ink-3" : "text-sm text-ink-2")}>{formatValue(value, unit, true)}</span>
+    </span>
+  );
+}
+
+/** The key for a chart with two series: a swatch (or a line) beside each name, in ink. */
+function Legend({ keys }: { keys: { label: string; className: string; line?: "solid" | "dashed" }[] }) {
+  return (
+    <p className="mb-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-ink-3">
+      {keys.map((k) => (
+        <span key={k.label} className="inline-flex items-center gap-1.5">
+          {k.line ? (
+            <span className={cx("w-4 border-t-2", k.className, k.line === "dashed" && "border-dashed")} aria-hidden />
+          ) : (
+            <span className={cx("size-2.5 rounded-[3px]", k.className)} aria-hidden />
+          )}
+          {k.label}
+        </span>
+      ))}
+    </p>
+  );
+}
+
+/**
+ * A funnel: a status column's stages in order, each counting the rows that reached it (at it or past
+ * it), with the share that moved on from the stage before. Rows in other statuses (like Lost) are
+ * listed under it rather than guessed into a stage.
+ */
+function Funnel({ widget, data }: { widget: Shown; data: DashboardWidgetData }) {
+  const items = data.items ?? [];
+  if (!items.length || !(items[0].value ?? 0)) return <NoRows />;
+  const first = items[0].value ?? 1;
+  const by = data.by ?? widget.by ?? "";
+  const table = widget.table;
+  const pct = (a: number | null, b: number | null) => (b ? `${Math.round(((a ?? 0) / b) * 100)}%` : "–");
+  return (
+    <div>
+      <ol className="-mx-2">
+        {items.map((item, i) => {
+          const row = (
+            <>
+              <span className="truncate text-sm text-ink-2 group-hover:text-ink" dir="auto">
+                {item.label}
+              </span>
+              <BarLine value={item.value} max={first} unit={data.unit} className="h-5 bg-accent" />
+            </>
+          );
+          const title = `${item.label}: ${formatValue(item.value, data.unit)} reached it${item.now !== undefined ? `, ${formatValue(item.now, data.unit)} here now` : ""}`;
+          return (
+            <li key={item.label}>
+              {i > 0 && (
+                <p className="grid grid-cols-[minmax(0,2fr)_minmax(0,3fr)] gap-3 px-2 text-xs text-ink-3 sm:grid-cols-[minmax(0,11rem)_minmax(0,1fr)]">
+                  <span />
+                  <span>
+                    <ArrowDown className="mr-0.5 inline size-3" aria-hidden />
+                    {pct(item.value, items[i - 1].value)} moved on
+                  </span>
+                </p>
+              )}
+              {table && item.filter !== undefined ? (
+                <Link href={tableHref(table, { ...widget.where, [by]: item.filter })} title={`${title}. Open the rows here now`} className={cx("group transition-colors hover:bg-surface-2", BAR_ROW)}>
+                  {row}
+                </Link>
+              ) : (
+                <div className={BAR_ROW} title={title}>
+                  {row}
+                </div>
+              )}
+            </li>
+          );
+        })}
+      </ol>
+      <p className="mt-2 text-sm text-ink-3">
+        {pct(items[items.length - 1].value, first)} of {formatValue(first, data.unit)} made it to {items[items.length - 1].label}
+        {(data.outside ?? []).length > 0 && (
+          <>
+            {" · not in the funnel: "}
+            {(data.outside ?? []).map((o, i) => (
+              <span key={o.label}>
+                {i > 0 && ", "}
+                {table ? (
+                  <Link href={tableHref(table, { ...widget.where, [by]: o.filter })} className="hover:text-ink hover:underline">
+                    {o.label} {formatValue(o.value, data.unit)}
+                  </Link>
+                ) : (
+                  `${o.label} ${formatValue(o.value, data.unit)}`
+                )}
+              </span>
+            ))}
+          </>
+        )}
+      </p>
+    </div>
+  );
+}
+
+/**
+ * Pace: the running total through this period (accent) against the same point in the one before
+ * (gray, dashed), with the goal as a hairline. One axis; hovering a day or week shows both totals.
+ */
+function Pace({ widget, data }: { widget: Shown; data: DashboardWidgetData }) {
+  const points = data.points ?? [];
+  const every = data.every ?? "week";
+  const [active, setActive] = useState<number | null>(null);
+  if (points.length < 2) return <NoRows />;
+  const words = PERIOD_WORDS[widget.period ?? "year"];
+  const reached = points.reduce((last, p, i) => (p.value !== null ? i : last), -1);
+  const top = niceMax(Math.max(...points.map((p) => Math.max(p.value ?? 0, p.previous ?? 0)), data.goal ?? 0));
+  const n = points.length - 1;
+  const x = (i: number) => ((i + 0.5) / points.length) * 100; // the middle of its hover column
+  const y = (v: number) => 100 - (Math.max(v, 0) / top) * 100;
+  const line = (values: (number | null | undefined)[]) =>
+    values.flatMap((v, i) => (v === null || v === undefined ? [] : [`${x(i)},${y(v)}`])).join(" ");
+  const shown = active ?? Math.max(reached, 0);
+  const now = points[shown];
+  const labelled = new Set([0, Math.floor(n / 2), n]);
+  const when = (start: string) => (every === "week" ? `the week of ${bucketLabel(start, "day")}` : bucketTitle(start, "day"));
+  return (
+    <div>
+      <p className="mb-1 flex flex-wrap items-baseline gap-x-2 text-sm text-ink-3">
+        <span className="text-2xl font-semibold text-ink">{formatValue(now.value ?? null, data.unit, true)}</span>
+        <span>
+          by {when(now.start)} · {formatValue(now.previous ?? null, data.unit, true)} at this point {words[1]}
+        </span>
+      </p>
+      <Legend
+        keys={[
+          { label: capital(words[0]), className: "border-accent", line: "solid" },
+          { label: capital(words[1]), className: "border-chart-previous", line: "dashed" },
+          ...(data.goal ? [{ label: `Goal ${formatValue(data.goal, data.unit, true)}`, className: "border-ink-3", line: "solid" as const }] : []),
+        ]}
+      />
+      <div className="flex gap-2">
+        <div className="flex h-40 flex-col justify-between text-right text-xs text-ink-3 tabular-nums" aria-hidden>
+          <span className="-translate-y-1/2">{formatValue(top, data.unit, true)}</span>
+          <span className="translate-y-1/2">0</span>
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="relative h-40 border-t border-b border-line" onMouseLeave={() => setActive(null)}>
+            {data.goal ? <div className="absolute inset-x-0 border-t border-ink-3/60" style={{ top: `${y(data.goal)}%` }} aria-hidden /> : null}
+            <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="absolute inset-0 size-full overflow-visible" aria-hidden>
+              <polyline points={line(points.map((p) => p.previous))} fill="none" className="stroke-chart-previous" strokeWidth={2} strokeDasharray="5 4" strokeLinejoin="round" strokeLinecap="round" vectorEffect="non-scaling-stroke" />
+              <polyline points={line(points.map((p) => p.value))} fill="none" className="stroke-accent" strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" vectorEffect="non-scaling-stroke" />
+            </svg>
+            {active !== null && <div className="absolute inset-y-0 border-l border-line" style={{ left: `${x(active)}%` }} aria-hidden />}
+            {now.value !== null && (
+              <span
+                className="absolute size-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-accent ring-2 ring-surface"
+                style={{ left: `${x(shown)}%`, top: `${y(now.value)}%` }}
+                aria-hidden
+              />
+            )}
+            <div className="absolute inset-0 flex">
+              {points.map((p, i) => (
+                <button
+                  key={p.start}
+                  type="button"
+                  onMouseEnter={() => setActive(i)}
+                  onFocus={() => setActive(i)}
+                  onBlur={() => setActive(null)}
+                  aria-label={`${when(p.start)}: ${p.value === null ? "still to come" : formatValue(p.value, data.unit)}, ${words[1]} ${formatValue(p.previous ?? null, data.unit)}`}
+                  className="h-full min-w-0 flex-1 outline-none focus-visible:bg-accent-soft/40"
+                />
+              ))}
+            </div>
+          </div>
+          <div className="relative mt-1.5 h-4 text-xs whitespace-nowrap text-ink-3" aria-hidden>
+            {[...labelled].map((i) => (
+              <span
+                key={i}
+                className={cx("absolute", i === 0 ? "left-0" : i === n ? "right-0" : "-translate-x-1/2")}
+                style={i === 0 || i === n ? undefined : { left: `${x(i)}%` }}
+              >
+                {bucketLabel(points[i].start, every)}
+              </span>
+            ))}
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

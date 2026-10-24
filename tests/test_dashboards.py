@@ -124,6 +124,26 @@ out["words"] = dashboards.charts_as_words("This week:\n\n```chart\n" + json.dump
     {"type": "bars", "table": "Leads", "by": "Status"}) + "\n```\n\n```chart\n" + json.dumps(out["given"] | {"items": [
     {"label": "Mugs", "value": 420}]}) + "\n```\nMore soon.")
 out["dashboards_after_chart"] = len(dashboards.dashboards())
+
+# Funnel, this vs last, pace: counted, refused when they can't be, and in words.
+f = dashboards.chart({"type": "funnel", "table": "Leads", "by": "Status", "stages": ["New", "Contacted", "Won"]}, TODAY)
+out["funnel"] = (f["title"], f["data"], dashboards._says(f))
+cmp = dashboards.chart({"type": "bars", "table": "Leads", "by": "Status", "date": "Next step", "period": "month"}, TODAY)
+out["compare"] = (cmp["title"], [[i["label"], i["value"], i["previous"]] for i in cmp["data"]["items"]], dashboards._says(cmp))
+pace = dashboards.chart({"type": "pace", "table": "Leads", "measure": "sum", "column": "Value", "date": "Next step",
+                         "period": "month", "goal": 5000}, TODAY)
+out["pace"] = (pace["title"], pace.get("wide"), len(pace["data"]["points"]), pace["data"]["points"][14], pace["data"]["points"][15]["value"],
+               pace["data"]["points"][30]["previous"], pace["data"]["every"], pace["data"]["goal"], dashboards._says(pace))
+out["new_errors"] = [dashboards.chart(x).get("error", "") for x in (
+    {"type": "funnel", "table": "Leads", "by": "Value"},
+    {"type": "funnel", "table": "Leads", "by": "Status", "stages": ["New", "Maybe"]},
+    {"type": "funnel", "table": "Leads", "by": "Status", "stages": ["New"]},
+    {"type": "pace", "table": "Leads", "measure": "average", "column": "Value"})]
+out["given_new"] = [dashboards.chart(x) for x in (
+    {"type": "funnel", "title": "Visitors to buyers", "items": [{"label": "Visited", "value": 900}, {"label": "Bought", "value": 27}]},
+    {"type": "bars", "title": "Sales by product", "period": "month", "items": [{"label": "Mugs", "value": 420, "previous": 300}]},
+    {"type": "pace", "title": "Revenue this year", "goal": 100, "points": [{"start": "2026-01-01", "value": 10, "previous": 8},
+                                                                          {"start": "2026-01-08", "value": None, "previous": 15}]})]
 agent_api._dash(dashboards.remove, api["id"])
 out["listed"] = sorted(x["name"] for x in dashboards.dashboards())
 print(json.dumps(out))
@@ -210,6 +230,34 @@ class DashboardsTest(unittest.TestCase):
             self.assertEqual(out["words"], "This week:\n\nLeads by Status: New: 2, Contacted: 1, Won: 1, Lost: 1\n\n"
                                            "Sales by product: Mugs: 420\nMore soon.")
             self.assertEqual(out["dashboards_after_chart"], 3)
+
+            title, data, says = out["funnel"]
+            self.assertEqual(title, "Leads funnel")
+            # Each stage counts the rows at it or past it; Lost isn't a stage, so it's shown apart.
+            self.assertEqual([[i["label"], i["value"], i["now"]] for i in data["items"]], [["New", 4, 2], ["Contacted", 2, 1], ["Won", 1, 1]])
+            self.assertEqual(data["outside"], [{"label": "Lost", "value": 1, "filter": "Lost"}])
+            self.assertEqual(says, "New 4 → Contacted 2 → Won 1 (not in the funnel: Lost 1)")
+            title, items, says = out["compare"]
+            self.assertEqual(title, "Leads by Status this month")
+            # October against September, by Next step; a status only last month still shows, at 0 now.
+            self.assertEqual(items, [["New", 1, 1], ["Contacted", 1, 0], ["Won", 1, 0], ["Lost", 0, 1]])
+            self.assertIn("New: 1 (was 1)", says)
+            title, wide, n, today_point, tomorrow, last_prev, every, goal, says = out["pace"]
+            self.assertEqual((title, wide, n, every, goal), ("Sum of Value so far this month", None, 31, "day", 5000))  # wide is for dashboards
+            # By Oct 15: 1,200 (Oct 2) + 950 (Oct 12) + 800 (Oct 14); September had only 400 (Sep 20) by its end.
+            self.assertEqual(today_point, {"start": "2026-10-15", "value": 2950.0, "previous": 0})
+            self.assertIsNone(tomorrow)
+            self.assertEqual(last_prev, 400.0)
+            self.assertEqual(says, "2,950 so far, 0 at this point last month, goal 5,000")
+            errors = out["new_errors"]
+            self.assertIn("Value can't be the one the funnel's stages come from", errors[0])
+            self.assertIn("Status has no Maybe", errors[1])
+            self.assertIn("at least two stages", errors[2])
+            self.assertIn("adds things up", errors[3])
+            funnel, compare, pace = out["given_new"]
+            self.assertEqual(funnel["data"]["items"][1], {"label": "Bought", "value": 27})
+            self.assertEqual(compare["data"]["items"], [{"label": "Mugs", "value": 420, "previous": 300}])
+            self.assertEqual((pace["period"], pace["data"]["every"], pace["data"]["goal"], pace["data"]["points"][1]["value"]), ("year", "week", 100, None))
 
             # The COO's command line: tables and columns, save from a file, show what it shows.
             (root / "drafts").mkdir(exist_ok=True)

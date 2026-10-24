@@ -13,13 +13,21 @@ in SQL with the same filters as the library's views, so it's always up to date a
     {"type": "trend",    "table": "Job openings", "date": "added", "every": "week", "last": 8}
     {"type": "list",     "table": "Leads", "sort": "Value", "dir": "desc", "limit": 5, "show": ["Name", "Value"]}
     {"type": "progress", "table": "Cafes", "where": {"Status": "Active"}, "goal": 12}
+    {"type": "bars",     "table": "Leads", "by": "Source", "period": "month"}      # this month next to last month
+    {"type": "funnel",   "table": "Leads", "by": "Status", "stages": ["New", "Contacted", "Proposal", "Won"]}
+    {"type": "pace",     "table": "Invoices", "measure": "sum", "column": "Amount", "date": "Paid on",
+                         "period": "year", "goal": 120000}                         # running total vs last year
 
 Every widget has a table and may have: title, where ({column: value}, like a view's filters; "" means
 empty), measure (count, sum, average, min, max; all but count need a number column in "column"),
 date (a date column, or "added": when the row was added) with period (week, month, quarter, year:
 number and progress count only this period, and number compares with the one before) or, for trend,
 every (day, week, month) and last (how many), and wide (true: the whole width). bars: by (a column:
-status, text, person, checkbox, tags or a link to another table) and limit. list: sort, dir, limit (up
+status, text, person, checkbox, tags or a link to another table) and limit; with period (and date), each
+bar is this period next to the one before. funnel: by (a status column) and stages (its labels in order,
+default all; leave out ones like Lost): each stage counts the rows at it or past it, and rows in other
+statuses are shown apart. pace: period (default year), date, optional goal: the running total through the
+period against the same point in the one before. funnel and pace count rows or sum a number column. list: sort, dir, limit (up
 to 10) and show (up to 4 columns).
 
 They live in the library database (library.db, so they're in the export), shown in the Library.
@@ -33,7 +41,7 @@ They live in the library database (library.db, so they're in the export), shown 
 The file for `save` is {"description": "...", "widgets": [...]}, the whole dashboard. Saving a name
 that exists updates that dashboard (no duplicates); to change one, start from `show`.
 
-A chart can also sit in a chat reply or a plan: one widget description (not list) in a ```chart block.
+A chart can also sit in a chat reply or a plan: one widget description (any but list) in a ```chart block.
 The app counts it each time it's shown, so it never goes stale, and the owner can pin it to a dashboard.
 Check one first; it prints what it shows now, or what's wrong:
 
@@ -42,7 +50,9 @@ Check one first; it prints what it shows now, or what's wrong:
 A routine telling the owner about figures it already has (not in a table) gives them instead of a
 table: {"type": "bars", "title": "Sales by product", "unit": "$", "items": [{"label": "Mugs", "value": 420}]},
 "points": [{"start": "2026-10-05", "value": 3}] with "every" for a trend, "value" (and "previous" with
-"period") for a number, "value" and "goal" for progress.
+"period") for a number, "value" and "goal" for progress. Bars with "period" give each item a "previous";
+a funnel's items are its stages in order, each counting the rows that reached it; a pace chart's points
+have "value" (null for days still to come) and "previous", with "period" and an optional "goal".
 """
 from __future__ import annotations
 
@@ -64,10 +74,11 @@ CREATE TABLE IF NOT EXISTS dashboards (id TEXT PRIMARY KEY, name TEXT NOT NULL, 
 CREATE TABLE IF NOT EXISTS dashboard_asks (id TEXT PRIMARY KEY, dashboard_id TEXT, text TEXT NOT NULL,
     status TEXT NOT NULL, reply TEXT, made TEXT, at TEXT NOT NULL);
 """
-KINDS = ("number", "bars", "trend", "list", "progress")
+KINDS = ("number", "bars", "trend", "list", "progress", "funnel", "pace")
 MEASURES = ("count", "sum", "average", "min", "max")
 PERIODS = ("week", "month", "quarter", "year")
 EVERY = {"day": 14, "week": 8, "month": 6}  # how many, unless `last` says
+PACE_STEP = {"week": "day", "month": "day", "quarter": "week", "year": "week"}  # a pace chart's points
 ADDED = "added"  # any table's rows: the day each was added
 GROUPABLE = ("status", "text", "person", "checkbox", "tags", "relation")
 MAX_WIDGETS = 24
@@ -122,12 +133,16 @@ def _title(w: dict, t: library.Table) -> str:
     if w["type"] == "list":
         return f"Top {t.name}" if w.get("sort") else f"Latest {t.name}"
     what = "Rows" if w["measure"] == "count" else f"{w['measure'].capitalize()} of {w['column']}"
+    period = f" this {w['period']}" if w.get("period") else ""
     if w["type"] == "bars":
-        return f"{t.name} by {w['by']}" if w["measure"] == "count" else f"{what} by {w['by']}"
+        return (f"{t.name} by {w['by']}" if w["measure"] == "count" else f"{what} by {w['by']}") + period
+    if w["type"] == "funnel":
+        return f"{t.name} funnel" if w["measure"] == "count" else f"{what} through {w['by']}"
+    if w["type"] == "pace":
+        return (t.name if w["measure"] == "count" else what) + f" so far this {w['period']}"
     if w["type"] == "trend":
         added = w["date"] == ADDED
         return f"{t.name} added per {w['every']}" if added and w["measure"] == "count" else f"{what} per {w['every']}"
-    period = f" this {w['period']}" if w.get("period") else ""
     return (f"{t.name}{period}" if w["measure"] == "count" else f"{what}{period}")
 
 
@@ -156,16 +171,17 @@ def clean_widget(con, spec: dict, keep_id: str | None = None) -> dict:
                 raise DashboardError(f"Say which number column to {measure}.")
             w["column"] = _column(t, spec["column"], ("number",), f"one to {measure}")["name"]
 
-    if kind in ("number", "progress", "trend"):
+    if kind in ("number", "progress", "trend", "bars", "pace"):
         when = spec.get("date")
-        if kind == "trend" or spec.get("period"):
+        if kind in ("trend", "pace") or spec.get("period"):
             when = when or ADDED
         if when:
             w["date"] = ADDED if str(when).lower() in (ADDED, "added on", "when added") else _column(t, when, ("date",), "date")["name"]
-    if kind in ("number", "progress") and spec.get("period"):
-        if spec["period"] not in PERIODS:
+    if kind in ("number", "progress", "bars", "pace") and (spec.get("period") or kind == "pace"):
+        period = spec.get("period") or "year"
+        if period not in PERIODS:
             raise DashboardError(f"A period is one of {', '.join(PERIODS)}.")
-        w["period"] = spec["period"]
+        w["period"] = period
     if kind == "trend":
         every = spec.get("every") or "week"
         if every not in EVERY:
@@ -177,6 +193,30 @@ def clean_widget(con, spec: dict, keep_id: str | None = None) -> dict:
             raise DashboardError("Say which column the bars are by.")
         w["by"] = _column(t, spec["by"], GROUPABLE, "one the bars are by")["name"]
         w["limit"] = max(2, min(int(spec.get("limit") or 8), 20))
+    if kind in ("funnel", "pace") and w["measure"] not in ("count", "sum"):
+        raise DashboardError(f"A {kind} adds things up, so it counts rows or sums a number column.")
+    if kind == "funnel":
+        if not spec.get("by"):
+            raise DashboardError("Say which status column the funnel's stages come from.")
+        col = _column(t, spec["by"], ("status",), "one the funnel's stages come from")
+        w["by"] = col["name"]
+        labels = col["options"].get("labels") or []
+        stages = spec.get("stages") or labels
+        if not isinstance(stages, list):
+            raise DashboardError("stages is a list of the status's labels, in order.")
+        missing = [str(x) for x in stages if x not in labels]
+        if missing:
+            raise DashboardError(f"{col['name']} has no {', '.join(missing)}. Its labels: {', '.join(labels)}.")
+        if len(stages) < 2:
+            raise DashboardError("A funnel needs at least two stages.")
+        w["stages"] = [str(x) for x in stages][:12]
+    if kind == "pace" and spec.get("goal") not in (None, ""):
+        try:
+            goal = float(spec.get("goal"))
+        except (TypeError, ValueError):
+            raise DashboardError("A pace chart's goal is a number.") from None
+        if goal > 0:
+            w["goal"] = int(goal) if goal.is_integer() else goal
     if kind == "list":
         if spec.get("sort") and str(spec["sort"]).lower() != ADDED:
             w["sort"] = _column(t, spec["sort"])["name"]
@@ -194,7 +234,7 @@ def clean_widget(con, spec: dict, keep_id: str | None = None) -> dict:
         if goal <= 0:
             raise DashboardError("A progress widget needs a goal above zero.")
         w["goal"] = int(goal) if goal.is_integer() else goal
-    if spec.get("wide") is True or (spec.get("wide") is None and kind in ("trend", "list")):
+    if spec.get("wide") is True or (spec.get("wide") is None and kind in ("trend", "list", "pace")):
         w["wide"] = True
     title = str(spec.get("title") or "").strip()[:80]
     w["title"] = title or _title(w, t)
@@ -291,16 +331,30 @@ def compute(con, w: dict, today: date | None = None) -> dict:
         out["points"] = points
         return out
 
+    def zero(v):
+        return 0 if v is None and measure in ("count", "sum") else v
+
+    def between(period: str, back: int = 0) -> tuple[str, list]:
+        frm, to = _bounds(period, today, back)
+        return f" AND {day} BETWEEN ? AND ?", [frm, to]
+
     if kind == "bars":
         col = _column(t, w["by"])
-        if col["type"] == "tags":
-            q = (f"SELECT j.value AS v, {agg} FROM rows, json_each(rows.cells, '$.\"{col['id']}\"') AS j "
-                 f"WHERE {filt} GROUP BY j.value")
-        elif col["type"] == "checkbox":
-            q = f"SELECT COALESCE({cell(col)}, 0) AS v, {agg} FROM rows WHERE {filt} GROUP BY v"
-        else:
-            q = f"SELECT {cell(col)} AS v, {agg} FROM rows WHERE {filt} GROUP BY v"
-        found = [(r[0], 0 if r[1] is None and measure in ("count", "sum") else r[1]) for r in con.execute(q, args)]
+
+        def groups(extra: str = "", extra_args: list | None = None) -> dict:
+            if col["type"] == "tags":
+                q = (f"SELECT j.value AS v, {agg} FROM rows, json_each(rows.cells, '$.\"{col['id']}\"') AS j "
+                     f"WHERE {filt}{extra} GROUP BY j.value")
+            elif col["type"] == "checkbox":
+                q = f"SELECT COALESCE({cell(col)}, 0) AS v, {agg} FROM rows WHERE {filt}{extra} GROUP BY v"
+            else:
+                q = f"SELECT {cell(col)} AS v, {agg} FROM rows WHERE {filt}{extra} GROUP BY v"
+            return {r[0]: zero(r[1]) for r in con.execute(q, [*args, *(extra_args or [])])}
+
+        period = w.get("period")
+        now = groups(*between(period)) if period else groups()
+        was = groups(*between(period, 1)) if period else {}
+        found = [(k, now.get(k, zero(None))) for k in {**was, **now}]
         labels = col["options"].get("labels") or []
         if col["type"] == "status" and labels:
             order = {label: i for i, label in enumerate(labels)}
@@ -308,7 +362,7 @@ def compute(con, w: dict, today: date | None = None) -> dict:
         elif col["type"] == "checkbox":
             found.sort(key=lambda x: not x[0])
         else:
-            found.sort(key=lambda x: (x[0] is None, -(x[1] or 0)))
+            found.sort(key=lambda x: (x[0] is None, -(x[1] or 0), -(was.get(x[0]) or 0)))
         names: dict = {}
         items = []
         for value, n in found[: w["limit"]]:
@@ -320,11 +374,53 @@ def compute(con, w: dict, today: date | None = None) -> dict:
                 label, filt_value = library._row_label(con, value, names) or "(a removed row)", value
             else:
                 label, filt_value = library._say(value), str(value)
-            items.append({"label": label, "value": n, "filter": filt_value})
+            item = {"label": label, "value": n, "filter": filt_value}
+            if period:
+                item["previous"] = was.get(value, zero(None))
+            items.append(item)
         out["items"] = items
         out["by"] = col["name"]
         if len(found) > w["limit"]:
             out["more"] = len(found) - w["limit"]
+        return out
+
+    if kind == "funnel":
+        col = _column(t, w["by"], ("status",), "one the funnel's stages come from")
+        at = {r[0]: zero(r[1]) for r in con.execute(f"SELECT {cell(col)} AS v, {agg} FROM rows WHERE {filt} GROUP BY v", args)}
+        stages = w["stages"]
+        here = [at.get(st) or 0 for st in stages]
+        # A row at a later stage went through the earlier ones, so each stage counts the rows at it or past it.
+        out["items"] = [{"label": st, "value": sum(here[i:]), "now": here[i], "filter": st} for i, st in enumerate(stages)]
+        out["outside"] = [{"label": library._say(k) if k is not None else f"No {col['name'].lower()}", "value": v, "filter": "" if k is None else str(k)}
+                          for k, v in at.items() if k not in stages and v]
+        out["by"] = col["name"]
+        return out
+
+    if kind == "pace":
+        period = w["period"]
+        step = 1 if PACE_STEP[period] == "day" else 7
+        frm, to = _bounds(period, today)
+        was_frm, was_to = _bounds(period, today, 1)
+
+        def running(a: str, b: str) -> dict:
+            index = f"CAST((julianday({day}) - julianday(?)) / {step} AS INTEGER)"
+            return {r[0]: r[1] or 0 for r in con.execute(
+                f"SELECT {index} AS i, {agg} FROM rows WHERE {filt} AND {day} BETWEEN ? AND ? GROUP BY i", [a, *args, a, b])}
+
+        now, was = running(frm, to), running(was_frm, was_to)
+        first = date.fromisoformat(frm)
+        steps = (date.fromisoformat(to) - first).days // step + 1
+        total = was_total = 0
+        points = []
+        for i in range(steps):
+            begins = first + timedelta(days=i * step)
+            total += now.get(i, 0)
+            was_total += was.get(i, 0)
+            points.append({"start": begins.isoformat(), "value": total if begins <= today else None, "previous": was_total})
+        out["points"] = points
+        out["every"] = PACE_STEP[period]
+        if w.get("goal"):
+            out["goal"] = w["goal"]
         return out
 
     # list
@@ -343,6 +439,7 @@ def compute(con, w: dict, today: date | None = None) -> dict:
 
 # ---------- charts in messages ----------
 
+MESSAGE_KINDS = ("number", "bars", "trend", "progress", "funnel", "pace")
 CHART_BLOCK = re.compile(r"```chart[ \t]*\n(.*?)\n?```", re.S)
 MAX_ITEMS = 20
 
@@ -358,8 +455,8 @@ def _figure(v, what: str):
 def _given(spec: dict) -> dict:
     """A chart with its own figures (a routine's report): checked, kept as given."""
     kind = spec.get("type")
-    if kind not in ("number", "bars", "trend", "progress"):
-        raise DashboardError("A chart with its own figures is a number, bars, trend or progress.")
+    if kind not in MESSAGE_KINDS:
+        raise DashboardError(f"A chart with its own figures is one of {', '.join(MESSAGE_KINDS)}.")
     title = str(spec.get("title") or "").strip()[:80]
     if not title:
         raise DashboardError("A chart with its own figures needs a title saying what they are.")
@@ -376,14 +473,45 @@ def _given(spec: dict) -> dict:
             data["goal"] = _figure(spec.get("goal"), "goal")
             if not data["goal"] or data["goal"] <= 0:
                 raise DashboardError("A progress chart needs a goal above zero.")
-    elif kind == "bars":
+    elif kind in ("bars", "funnel"):
         items = spec.get("items")
-        if not isinstance(items, list) or not items:
-            raise DashboardError("Bars with their own figures need items: [{\"label\": ..., \"value\": ...}].")
-        data["items"] = [{"label": str(i.get("label") or "")[:60], "value": _figure(i.get("value"), "Each bar's value")}
-                         for i in items[:MAX_ITEMS] if isinstance(i, dict)]
+        if not isinstance(items, list) or len(items) < (2 if kind == "funnel" else 1):
+            raise DashboardError(f"{'A funnel' if kind == 'funnel' else 'Bars'} with their own figures need items: [{{\"label\": ..., \"value\": ...}}].")
+        if kind == "bars" and spec.get("period"):
+            if spec["period"] not in PERIODS:
+                raise DashboardError(f"A period is one of {', '.join(PERIODS)}.")
+            w["period"] = spec["period"]
+        data["items"] = []
+        for i in items[:MAX_ITEMS]:
+            if not isinstance(i, dict):
+                continue
+            item = {"label": str(i.get("label") or "")[:60], "value": _figure(i.get("value"), "Each bar's value")}
+            if w.get("period"):
+                item["previous"] = _figure(i.get("previous"), "Each bar's previous")
+            data["items"].append(item)
         if len(items) > MAX_ITEMS:
             data["more"] = len(items) - MAX_ITEMS
+    elif kind == "pace":
+        period = spec.get("period") or "year"
+        if period not in PERIODS:
+            raise DashboardError(f"A period is one of {', '.join(PERIODS)}.")
+        w["period"] = period
+        points = spec.get("points")
+        if not isinstance(points, list) or len(points) < 2:
+            raise DashboardError("A pace chart with its own figures needs points: [{\"start\": \"2026-10-05\", \"value\": ..., \"previous\": ...}].")
+        clean = []
+        for p in points[:60]:
+            start = str(p.get("start") if isinstance(p, dict) else "")
+            try:
+                date.fromisoformat(start)
+            except ValueError:
+                raise DashboardError("Each point's start is a date, like 2026-10-05.") from None
+            clean.append({"start": start, "value": _figure(p.get("value"), "Each point's value"),
+                          "previous": _figure(p.get("previous"), "Each point's previous")})
+        data["points"] = clean
+        data["every"] = PACE_STEP[period]
+        if spec.get("goal") is not None:
+            data["goal"] = _figure(spec.get("goal"), "goal")
     else:
         every = spec.get("every") or "week"
         if every not in EVERY:
@@ -414,7 +542,7 @@ def chart(spec, today: date | None = None) -> dict:
         if "table" not in spec:
             return _given(spec)
         if spec.get("type") == "list":
-            raise DashboardError("A chart in a message is a number, bars, trend or progress; rows belong in a table.")
+            raise DashboardError(f"A chart in a message is one of {', '.join(MESSAGE_KINDS)}; rows belong in a table.")
         with connect() as con:
             w = clean_widget(con, spec)
             w.pop("id", None)
@@ -739,7 +867,18 @@ def _says(w: dict) -> str:
         return f"{_num(d['value'])} of {_num(d['goal'])}"
     if w["type"] == "bars":
         more = f", and {d['more']} more" if d.get("more") else ""
-        return ", ".join(f"{i['label']}: {_num(i['value'])}" for i in d["items"]) + more or "no rows"
+        was = lambda i: f" (was {_num(i['previous'])})" if "previous" in i else ""  # noqa: E731
+        return ", ".join(f"{i['label']}: {_num(i['value'])}{was(i)}" for i in d["items"]) + more or "no rows"
+    if w["type"] == "funnel":
+        steps = " → ".join(f"{i['label']} {_num(i['value'])}" for i in d["items"])
+        outside = ", ".join(f"{o['label']} {_num(o['value'])}" for o in d.get("outside") or [])
+        return steps + (f" (not in the funnel: {outside})" if outside else "")
+    if w["type"] == "pace":
+        reached = [p for p in d["points"] if p["value"] is not None]
+        if not reached:
+            return "nothing yet"
+        goal = f", goal {_num(d['goal'])}" if d.get("goal") else ""
+        return f"{_num(reached[-1]['value'])} so far, {_num(reached[-1]['previous'])} at this point last {w.get('period', 'time')}{goal}"
     if w["type"] == "trend":
         return ", ".join(f"{p['start']}: {_num(p['value'])}" for p in d["points"][-6:])
     return f"{len(d['rows'])} of {d['total']} rows"

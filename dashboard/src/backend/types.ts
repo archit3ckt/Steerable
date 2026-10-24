@@ -317,7 +317,7 @@ export type BookIdea = {
  * the COO when asked or by the owner in the Library. A widget is a description, never code: what it
  * counts (a table, filters like a view's, a measure) and how it's shown.
  */
-export type DashboardWidgetType = "number" | "bars" | "trend" | "list" | "progress";
+export type DashboardWidgetType = "number" | "bars" | "trend" | "list" | "progress" | "funnel" | "pace";
 export type DashboardMeasure = "count" | "sum" | "average" | "min" | "max";
 export type DashboardWidgetSpec = {
   type: DashboardWidgetType;
@@ -331,19 +331,21 @@ export type DashboardWidgetSpec = {
   column?: string;
   /** A date column, or "added" (when each row was added). */
   date?: string;
-  /** number and progress: only this period (number also shows the one before). */
+  /** number, progress and bars: only this period (number and bars also show the one before). pace: the period it runs through. */
   period?: "week" | "month" | "quarter" | "year";
   /** trend: one bar per day, week or month, the last `last` of them. */
   every?: "day" | "week" | "month";
   last?: number;
-  /** bars: the column they're by, and how many. list: how many rows. */
+  /** funnel: the status's labels it goes through, in order. */
+  stages?: string[];
+  /** bars and funnel: the column they're by (funnel: a status), and how many. list: how many rows. */
   by?: string;
   limit?: number;
   /** list: its order (newest first without) and up to 4 columns. */
   sort?: string;
   dir?: "asc" | "desc";
   show?: string[];
-  /** progress: the number it's working toward. */
+  /** progress, and optionally pace: the number it's working toward. */
   goal?: number;
   /** The whole width (trend and list are, unless false). */
   wide?: boolean;
@@ -357,11 +359,23 @@ export type DashboardWidgetData = {
   previous?: number | null;
   goal?: number;
   /** bars: each value of `by` (filter: that value for the table's grid, "" for empty; none on a chart with its own figures) */
-  items?: { label: string; value: number | null; filter?: string }[];
+  items?: {
+    label: string;
+    value: number | null;
+    filter?: string;
+    /** bars with a period: the period before. */
+    previous?: number | null;
+    /** funnel: rows at this stage now (value counts the rows that reached it). */
+    now?: number | null;
+  }[];
+  /** funnel: rows in statuses outside its stages (like Lost). */
+  outside?: { label: string; value: number | null; filter: string }[];
   by?: string;
   more?: number;
   /** trend: each day, week or month by its first day */
-  points?: { start: string; value: number | null }[];
+  points?: { start: string; value: number | null; previous?: number | null }[];
+  /** pace: what a point is (a day or a week). Its points are running totals; value is null still to come. */
+  every?: "day" | "week";
   /** list */
   columns?: { name: string; type: LibraryColumnType; unit?: string }[];
   rows?: { id: string; cells: Record<string, CellValue> }[];

@@ -80,8 +80,30 @@ function step(every: string, day: Date, n: number): Date {
   return d;
 }
 
+/** The first and last day of this period (back 1: the one before), like dashboards.py's _bounds. */
+function bounds(period: string, today: Date, back = 0): [string, string] {
+  const iso = (d: Date) => d.toISOString().slice(0, 10);
+  const y = today.getUTCFullYear();
+  if (period === "week") {
+    const start = bucket("week", today);
+    start.setUTCDate(start.getUTCDate() - 7 * back);
+    const end = new Date(start);
+    end.setUTCDate(end.getUTCDate() + 6);
+    return [iso(start), iso(end)];
+  }
+  if (period === "year") return [`${y - back}-01-01`, `${y - back}-12-31`];
+  const months = period === "quarter" ? 3 : 1;
+  const first = Math.floor(today.getUTCMonth() / months) * months - back * months;
+  return [iso(new Date(Date.UTC(y, first, 1))), iso(new Date(Date.UTC(y, first + months, 0)))];
+}
+
 function compute(t: Table, w: DashboardWidgetSpec): DashboardWidgetData {
   const rows = rowsOf(t, w.where);
+  const inside = (list: Table["rows"], [from, to]: [string, string]) =>
+    list.filter((r) => {
+      const d = dayOf(r, w);
+      return d !== null && d >= from && d <= to;
+    });
   const unit = w.measure && w.measure !== "count" ? t.columns.find((c) => c.name === w.column)?.options.unit : undefined;
   const out: DashboardWidgetData = unit ? { unit } : {};
   if (w.type === "number" || w.type === "progress") {
@@ -105,17 +127,72 @@ function compute(t: Table, w: DashboardWidgetSpec): DashboardWidgetData {
     });
     return out;
   }
+  if (w.type === "funnel") {
+    const stages = w.stages ?? t.columns.find((c) => c.name === w.by)?.options.labels ?? [];
+    const here = stages.map((st) => measure(rows.filter((r) => r.cells[w.by ?? ""] === st), w) ?? 0);
+    out.by = w.by;
+    out.items = stages.map((st, i) => ({ label: st, value: here.slice(i).reduce((a, b) => a + b, 0), now: here[i], filter: st }));
+    const others = new Map<string, Table["rows"]>();
+    for (const r of rows) {
+      const v = String(r.cells[w.by ?? ""] ?? "");
+      if (!stages.includes(v)) others.set(v, [...(others.get(v) ?? []), r]);
+    }
+    out.outside = [...others].map(([k, list]) => ({ label: k || `No ${(w.by ?? "").toLowerCase()}`, value: measure(list, w), filter: k }));
+    return out;
+  }
+  if (w.type === "pace") {
+    const period = w.period ?? "year";
+    const step = period === "week" || period === "month" ? 1 : 7;
+    const today = new Date();
+    const [from, to] = bounds(period, today);
+    const [wasFrom, wasTo] = bounds(period, today, 1);
+    const index = (day: string, start: string) => Math.floor((Date.parse(day) - Date.parse(start)) / 86_400_000 / step);
+    const steps = index(to, from) + 1;
+    const sums = (start: string, end: string) => {
+      const by = new Array<number>(steps).fill(0);
+      for (const r of inside(rows, [start, end])) {
+        const i = index(dayOf(r, w)!, start);
+        if (i < steps) by[i] += measure([r], w) ?? 0;
+      }
+      return by;
+    };
+    const now = sums(from, to);
+    const was = sums(wasFrom, wasTo);
+    let total = 0;
+    let wasTotal = 0;
+    const todayIso = today.toISOString().slice(0, 10);
+    out.points = now.map((v, i) => {
+      const start = new Date(Date.parse(from) + i * step * 86_400_000).toISOString().slice(0, 10);
+      total += v;
+      wasTotal += was[i];
+      return { start, value: start <= todayIso ? total : null, previous: wasTotal };
+    });
+    out.every = step === 1 ? "day" : "week";
+    if (w.goal) out.goal = w.goal;
+    return out;
+  }
   if (w.type === "bars") {
     const col = t.columns.find((c) => c.name === w.by);
     const groups = new Map<string, Table["rows"]>();
-    for (const r of rows) {
+    const previous = new Map<string, Table["rows"]>();
+    const key = (r: Table["rows"][number]) => {
       const v = r.cells[w.by ?? ""];
-      for (const key of Array.isArray(v) ? v : [v === null || v === undefined ? "" : String(v)]) groups.set(key, [...(groups.get(key) ?? []), r]);
+      return Array.isArray(v) ? v : [v === null || v === undefined ? "" : String(v)];
+    };
+    for (const r of w.period ? inside(rows, bounds(w.period, new Date())) : rows) for (const k of key(r)) groups.set(k, [...(groups.get(k) ?? []), r]);
+    if (w.period) {
+      for (const r of inside(rows, bounds(w.period, new Date(), 1))) for (const k of key(r)) previous.set(k, [...(previous.get(k) ?? []), r]);
+      for (const k of previous.keys()) if (!groups.has(k)) groups.set(k, []);
     }
     const labels = col?.options.labels ?? [];
     const keys = [...groups.keys()].sort((a, b) => (labels.length ? labels.indexOf(a) - labels.indexOf(b) : groups.get(b)!.length - groups.get(a)!.length));
     out.by = w.by;
-    out.items = keys.slice(0, w.limit ?? 8).map((k) => ({ label: k || `No ${(w.by ?? "").toLowerCase()}`, value: measure(groups.get(k)!, w), filter: k }));
+    out.items = keys.slice(0, w.limit ?? 8).map((k) => ({
+      label: k || `No ${(w.by ?? "").toLowerCase()}`,
+      value: measure(groups.get(k)!, w),
+      filter: k,
+      ...(w.period ? { previous: measure(previous.get(k) ?? [], w) } : {}),
+    }));
     if (keys.length > (w.limit ?? 8)) out.more = keys.length - (w.limit ?? 8);
     return out;
   }
@@ -229,14 +306,22 @@ export function dashboardOps(library: () => Table[], stored: () => Stored[], ask
       }
       if (!spec || typeof spec !== "object") return { error: "A chart is a description like {\"type\": \"bars\", \"table\": \"Leads\", \"by\": \"Status\"}." };
       const type = spec.type as DashboardWidgetSpec["type"];
-      if (!["number", "bars", "trend", "progress"].includes(type)) return { error: "A chart in a message is a number, bars, trend or progress." };
+      if (!["number", "bars", "trend", "progress", "funnel", "pace"].includes(type)) return { error: "A chart in a message is a number, bars, trend, progress, funnel or pace." };
       if (typeof spec.table !== "string") {
         // A routine's own figures, as dashboards.py checks them.
         const title = typeof spec.title === "string" ? spec.title.trim() : "";
         if (!title) return { error: "A chart with its own figures needs a title saying what they are." };
         const data: DashboardWidgetData = typeof spec.unit === "string" ? { unit: spec.unit } : {};
-        if (type === "bars") data.items = ((spec.items as { label: string; value: number }[]) ?? []).slice(0, 20).map((i) => ({ label: String(i.label), value: i.value }));
+        if (type === "bars" || type === "funnel")
+          data.items = ((spec.items as { label: string; value: number; previous?: number }[]) ?? [])
+            .slice(0, 20)
+            .map((i) => ({ label: String(i.label), value: i.value, ...(spec.period && i.previous !== undefined ? { previous: i.previous } : {}) }));
         else if (type === "trend") data.points = ((spec.points as { start: string; value: number }[]) ?? []).slice(-36);
+        else if (type === "pace") {
+          data.points = ((spec.points as { start: string; value: number | null; previous: number }[]) ?? []).slice(0, 60);
+          data.every = spec.period === "week" || spec.period === "month" ? "day" : "week";
+          if (typeof spec.goal === "number") data.goal = spec.goal;
+        }
         else {
           data.value = spec.value as number;
           if (spec.previous !== undefined) data.previous = spec.previous as number;

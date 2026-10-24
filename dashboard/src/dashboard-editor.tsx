@@ -6,6 +6,7 @@ import {
   ChevronDown,
   ChevronUp,
   Ellipsis,
+  Filter,
   Hash,
   ListOrdered,
   Loader2,
@@ -14,6 +15,7 @@ import {
   Sparkles,
   Target,
   Trash2,
+  TrendingUp,
   TriangleAlert,
   X,
 } from "lucide-react";
@@ -40,6 +42,8 @@ const KINDS: { type: DashboardWidgetType; label: string; hint: string; Icon: typ
   { type: "trend", label: "Over time", hint: "Per day, week or month", Icon: ChartColumn },
   { type: "list", label: "Top rows", hint: "The biggest, or the latest", Icon: ListOrdered },
   { type: "progress", label: "Goal", hint: "Progress toward a number", Icon: Target },
+  { type: "funnel", label: "Funnel", hint: "How many get through each stage", Icon: Filter },
+  { type: "pace", label: "Pace", hint: "Running total vs last time", Icon: TrendingUp },
 ];
 
 const field = "w-full rounded-lg border border-line bg-surface px-3 py-2 text-sm outline-none focus:border-accent";
@@ -80,7 +84,7 @@ export function DashboardBoard({ dashboard, actions }: { dashboard: DashboardDet
               key={w.id}
               className={cx(
                 "flex min-w-0 flex-col p-5",
-                w.wide ? "sm:col-span-2 lg:col-span-4" : w.type === "bars" || w.type === "list" || w.type === "trend" ? "sm:col-span-2" : "",
+                w.wide ? "sm:col-span-2 lg:col-span-4" : ["bars", "list", "trend", "funnel", "pace"].includes(w.type) ? "sm:col-span-2" : "",
               )}
             >
               <div className="mb-3 flex items-start gap-2">
@@ -197,6 +201,9 @@ function WidgetEditor({
   const numbers = columns.filter((c) => c.type === "number");
   const dates = columns.filter((c) => c.type === "date");
   const groupable = columns.filter((c) => ["status", "text", "person", "checkbox", "tags", "relation"].includes(c.type));
+  const statuses = columns.filter((c) => c.type === "status" && (c.labels?.length ?? 0) >= 2);
+  const stageColumn = statuses.find((c) => c.name === d.by) ?? statuses[0];
+  const adds = d.type === "funnel" || d.type === "pace"; // running totals and funnels add up: count or sum only
   const set = (change: Partial<Draft>) => setD((old) => ({ ...old, ...change }));
 
   useEffect(() => {
@@ -228,9 +235,11 @@ function WidgetEditor({
         spec.measure = d.measure ?? "count";
         if (spec.measure !== "count") spec.column = d.column;
       }
-      if (d.type === "number" || d.type === "progress") {
+      if (d.type === "number" || d.type === "progress" || d.type === "bars") {
         if (d.period) Object.assign(spec, { period: d.period, date: d.date || "added" });
       }
+      if (d.type === "funnel") Object.assign(spec, { by: stageColumn?.name, stages: d.stages?.length ? d.stages : undefined });
+      if (d.type === "pace") Object.assign(spec, { period: d.period ?? "year", date: d.date || "added", goal: d.goal || undefined });
       if (d.type === "progress") spec.goal = d.goal;
       if (d.type === "trend") Object.assign(spec, { date: d.date || "added", every: d.every ?? "week", last: d.last });
       if (d.type === "bars") Object.assign(spec, { by: d.by ?? groupable[0]?.name, limit: d.limit });
@@ -259,7 +268,7 @@ function WidgetEditor({
       >
         <fieldset>
           <legend className="mb-2 text-sm text-ink-2">What kind</legend>
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
             {KINDS.map((k) => (
               <button
                 key={k.type}
@@ -310,6 +319,7 @@ function WidgetEditor({
                   <option key={`sum:${c.name}`} value={`sum:${c.name}`}>
                     Total {c.name}
                   </option>,
+                  ...(adds ? [] : [
                   <option key={`average:${c.name}`} value={`average:${c.name}`}>
                     Average {c.name}
                   </option>,
@@ -319,6 +329,7 @@ function WidgetEditor({
                   <option key={`max:${c.name}`} value={`max:${c.name}`}>
                     Highest {c.name}
                   </option>,
+                  ]),
                 ])}
               </select>,
             )}
@@ -336,7 +347,29 @@ function WidgetEditor({
               groupable.length ? undefined : "This table has no column to split by (a status, text, person, checkbox or tags).",
             )}
 
-          {(d.type === "number" || d.type === "progress") &&
+          {d.type === "funnel" &&
+            label(
+              "Stages from",
+              <select className={field} value={stageColumn?.name ?? ""} onChange={(e) => set({ by: e.target.value, stages: undefined })}>
+                {statuses.map((c) => (
+                  <option key={c.name} value={c.name}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>,
+              statuses.length ? undefined : "A funnel goes through the labels of a status column, and this table has none.",
+            )}
+          {d.type === "pace" &&
+            label(
+              "Running through",
+              <select className={field} value={d.period ?? "year"} onChange={(e) => set({ period: e.target.value as Draft["period"] })}>
+                <option value="week">This week, vs last week</option>
+                <option value="month">This month, vs last month</option>
+                <option value="quarter">This quarter, vs last quarter</option>
+                <option value="year">This year, vs last year</option>
+              </select>,
+            )}
+          {(d.type === "number" || d.type === "progress" || d.type === "bars") &&
             label(
               "Which rows",
               <select className={field} value={d.period ?? ""} onChange={(e) => set({ period: (e.target.value || undefined) as Draft["period"] })}>
@@ -346,9 +379,9 @@ function WidgetEditor({
                 <option value="quarter">This quarter</option>
                 <option value="year">This year</option>
               </select>,
-              d.type === "number" && d.period ? "It also shows the one before, to compare." : undefined,
+              d.type !== "progress" && d.period ? `${d.type === "bars" ? "Each bar" : "It"} also shows the one before, to compare.` : undefined,
             )}
-          {(d.type === "trend" || ((d.type === "number" || d.type === "progress") && d.period)) &&
+          {(d.type === "trend" || d.type === "pace" || ((d.type === "number" || d.type === "progress" || d.type === "bars") && d.period)) &&
             label(
               "By the date",
               <select className={field} value={d.date ?? "added"} onChange={(e) => set({ date: e.target.value })}>
@@ -383,6 +416,11 @@ function WidgetEditor({
               )}
             </>
           )}
+          {d.type === "pace" &&
+            label(
+              "A goal (optional)",
+              <input type="number" min={0} step="any" className={field} value={d.goal ?? ""} onChange={(e) => set({ goal: Number(e.target.value) || undefined })} />,
+            )}
           {d.type === "progress" &&
             label(
               "The goal",
@@ -418,6 +456,29 @@ function WidgetEditor({
             </>
           )}
         </div>
+
+        {d.type === "funnel" && stageColumn && (
+          <fieldset>
+            <legend className="mb-2 text-sm text-ink-2">Its stages, in order (leave out ones like Lost)</legend>
+            <div className="flex flex-wrap gap-2">
+              {(stageColumn.labels ?? []).map((l) => {
+                const chosen = d.stages ?? stageColumn.labels ?? [];
+                const on = chosen.includes(l);
+                return (
+                  <button
+                    key={l}
+                    type="button"
+                    aria-pressed={on}
+                    onClick={() => set({ stages: (stageColumn.labels ?? []).filter((x) => (x === l ? !on : chosen.includes(x))) })}
+                    className={cx("rounded-full border px-3 py-1 text-sm", on ? "border-accent bg-accent-soft text-ink" : "border-line text-ink-2")}
+                  >
+                    {l}
+                  </button>
+                );
+              })}
+            </div>
+          </fieldset>
+        )}
 
         {d.type === "list" && (
           <fieldset>

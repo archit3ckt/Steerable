@@ -26,6 +26,9 @@
   --accent-hover: #245840;
   --accent-ink: #ffffff;
   --accent-soft: #e4efe8;
+  /* A chart's "last period" series: a quiet gray, told apart from the accent with colorblindness too
+     (checked with the dataviz validator: CVD ΔE 12.9, 3:1 on the surface). */
+  --chart-previous: #8f887d;
 
   --amber: #965a14;
   --amber-soft: #fbf0dc;
@@ -55,6 +58,7 @@
     --accent-hover: #74c89b;
     --accent-ink: #0e1a13;
     --accent-soft: #21342a;
+    --chart-previous: #7a746a;
 
     --amber: #e0a352;
     --amber-soft: #352a1a;
@@ -83,6 +87,7 @@
   --accent-hover: #74c89b;
   --accent-ink: #0e1a13;
   --accent-soft: #21342a;
+  --chart-previous: #7a746a;
 
   --amber: #e0a352;
   --amber-soft: #352a1a;
@@ -121,6 +126,7 @@
   --color-accent-hover: var(--accent-hover);
   --color-accent-ink: var(--accent-ink);
   --color-accent-soft: var(--accent-soft);
+  --color-chart-previous: var(--chart-previous);
   --color-amber: var(--amber);
   --color-amber-soft: var(--amber-soft);
   --color-rose: var(--rose);
