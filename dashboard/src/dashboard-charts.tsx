@@ -3,15 +3,18 @@
 import { ArrowDown, ArrowUp, Check } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
-import type { CellValue, DashboardWidget, DashboardWidgetData } from "./backend/types";
+import type { CellValue, DashboardWidget, DashboardWidgetData, MessageChart } from "./backend/types";
 import { PERIOD_WORDS, bucketLabel, bucketTitle, formatValue, niceMax, tableHref } from "./dashboard-format";
 import { cx } from "./ui";
+
+/** A dashboard's widget, or a chart in a message (no table when a routine gave its own figures). */
+type Shown = DashboardWidget | MessageChart;
 
 /**
  * What a dashboard widget shows. One series each, so the accent marks it and the title names it (no
  * legend); every value is also reachable without hovering: labels, the table it opens, or the grid.
  */
-export function WidgetBody({ widget }: { widget: DashboardWidget }) {
+export function WidgetBody({ widget }: { widget: Shown }) {
   const data = widget.data ?? {};
   switch (widget.type) {
     case "number":
@@ -23,11 +26,11 @@ export function WidgetBody({ widget }: { widget: DashboardWidget }) {
     case "trend":
       return <Trend widget={widget} data={data} />;
     default:
-      return <Rows widget={widget} data={data} />;
+      return widget.table ? <Rows widget={{ ...widget, table: widget.table }} data={data} /> : null;
   }
 }
 
-function NumberTile({ widget, data }: { widget: DashboardWidget; data: DashboardWidgetData }) {
+function NumberTile({ widget, data }: { widget: Shown; data: DashboardWidgetData }) {
   const words = widget.period ? PERIOD_WORDS[widget.period] : null;
   const change = data.previous !== undefined && data.value !== null && data.value !== undefined && data.previous !== null ? data.value - data.previous : null;
   return (
@@ -89,21 +92,20 @@ function Progress({ data }: { data: DashboardWidgetData }) {
   );
 }
 
-function Bars({ widget, data }: { widget: DashboardWidget; data: DashboardWidgetData }) {
+const BAR_ROW = "grid grid-cols-[minmax(0,2fr)_minmax(0,3fr)] items-center gap-3 rounded-lg px-2 py-1.5 sm:grid-cols-[minmax(0,11rem)_minmax(0,1fr)]";
+
+function Bars({ widget, data }: { widget: Shown; data: DashboardWidgetData }) {
   const items = data.items ?? [];
   if (!items.length) return <NoRows />;
   const max = Math.max(...items.map((i) => i.value ?? 0), 0) || 1;
   const by = data.by ?? widget.by ?? "";
+  const table = widget.table;
   return (
     <div>
       <ul className="-mx-2 space-y-0.5">
-        {items.map((item) => (
-          <li key={`${item.label}-${item.filter}`}>
-            <Link
-              href={tableHref(widget.table, { ...widget.where, [by]: item.filter })}
-              title={`${item.label}: ${formatValue(item.value, data.unit)}. Open these rows`}
-              className="group grid grid-cols-[minmax(0,9rem)_minmax(0,1fr)] items-center gap-3 rounded-lg px-2 py-1.5 transition-colors hover:bg-surface-2 sm:grid-cols-[minmax(0,11rem)_minmax(0,1fr)]"
-            >
+        {items.map((item, i) => {
+          const bar = (
+            <>
               <span className="truncate text-sm text-ink-2 group-hover:text-ink" dir="auto">
                 {item.label}
               </span>
@@ -114,20 +116,41 @@ function Bars({ widget, data }: { widget: DashboardWidget; data: DashboardWidget
                 />
                 <span className="text-sm text-ink-2 tabular-nums">{formatValue(item.value, data.unit, true)}</span>
               </span>
-            </Link>
-          </li>
-        ))}
+            </>
+          );
+          return (
+            <li key={`${item.label}-${item.filter ?? i}`}>
+              {table && item.filter !== undefined ? (
+                <Link
+                  href={tableHref(table, { ...widget.where, [by]: item.filter })}
+                  title={`${item.label}: ${formatValue(item.value, data.unit)}. Open these rows`}
+                  className={cx("group transition-colors hover:bg-surface-2", BAR_ROW)}
+                >
+                  {bar}
+                </Link>
+              ) : (
+                <div className={BAR_ROW} title={`${item.label}: ${formatValue(item.value, data.unit)}`}>
+                  {bar}
+                </div>
+              )}
+            </li>
+          );
+        })}
       </ul>
       {data.more ? (
-        <Link href={tableHref(widget.table, widget.where)} className="mt-2 inline-block text-sm text-ink-3 hover:text-ink">
-          and {data.more} more
-        </Link>
+        table ? (
+          <Link href={tableHref(table, widget.where)} className="mt-2 inline-block text-sm text-ink-3 hover:text-ink">
+            and {data.more} more
+          </Link>
+        ) : (
+          <p className="mt-2 text-sm text-ink-3">and {data.more} more</p>
+        )
       ) : null}
     </div>
   );
 }
 
-function Trend({ widget, data }: { widget: DashboardWidget; data: DashboardWidgetData }) {
+function Trend({ widget, data }: { widget: Shown; data: DashboardWidgetData }) {
   const points = data.points ?? [];
   const every = widget.every ?? "week";
   const [active, setActive] = useState<number | null>(null);
@@ -194,7 +217,7 @@ function cell(value: CellValue | undefined, type: string, unit: string | undefin
   return value;
 }
 
-function Rows({ widget, data }: { widget: DashboardWidget; data: DashboardWidgetData }) {
+function Rows({ widget, data }: { widget: Shown & { table: string }; data: DashboardWidgetData }) {
   const rows = data.rows ?? [];
   const columns = data.columns ?? [];
   if (!rows.length) return <NoRows />;

@@ -2,6 +2,7 @@ import { isValidElement, type ComponentProps, type ElementType, type ReactNode }
 import ReactMarkdown, { type Components, type ExtraProps } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { CopyButton } from "./copy-button";
+import { MessageChart } from "./message-chart";
 
 /** An element in the dashboard's look (react-markdown's `node` prop stays off the DOM). */
 function styled<T extends ElementType>(Tag: T, className: string, extra?: ComponentProps<T>) {
@@ -33,6 +34,7 @@ function Snippet({ node, children }: ComponentProps<"pre"> & ExtraProps) {
   const code = isValidElement<{ className?: string; children?: ReactNode }>(children) ? children : null;
   const lang = (code?.props.className ?? "").match(/language-([\w+#-]+)/)?.[1]?.toLowerCase() ?? "";
   const text = textOf(code ? code.props.children : children).replace(/\n$/, "");
+  if (lang === "chart") return <MessageChart block={text} />;
   if (PASTE.has(lang)) {
     return (
       <div className={`my-2 rounded-xl border border-line bg-bg ${FIRST_LAST}`}>
@@ -88,7 +90,10 @@ const COMPONENTS: Components = {
   img: ({ alt }) => <span>{alt}</span>,
 };
 
-/** The COO's words, which may use Markdown: bold, lists, links, tables, code and text to copy. */
+/**
+ * The COO's words, which may use Markdown: bold, lists, links, tables, code, text to copy, and charts
+ * (```chart, counted under a ChartsProvider).
+ */
 export function Markdown({ text }: { text: string }) {
   return (
     <ReactMarkdown remarkPlugins={[remarkGfm]} components={COMPONENTS}>

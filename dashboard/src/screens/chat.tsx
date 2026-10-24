@@ -6,6 +6,7 @@ import type { DashboardHost } from "../host";
 import type { ChatMessage } from "../backend/types";
 import { Chat } from "../chat";
 import { ChatSplit } from "../chat-artifacts";
+import { ChartsProvider } from "../message-chart";
 import { clock, dayLabel } from "../format";
 import { Card, PageHeader, Skeleton, cx, inputClass } from "../ui";
 
@@ -19,11 +20,13 @@ type SearchParams = Promise<Record<string, string | string[] | undefined>>;
 export function ChatPage({ host, searchParams, notice }: { host: DashboardHost; searchParams?: SearchParams; notice?: ReactNode }) {
   return (
     <Suspense fallback={<Skeleton className="mx-auto h-[60vh] max-w-3xl" />}>
-      <ChatSplit plansUrl={host.plansUrl}>
-        <Suspense fallback={<Skeleton className="h-[60vh]" />}>
-          <Conversation host={host} searchParams={searchParams} notice={notice} />
-        </Suspense>
-      </ChatSplit>
+      <ChartsProvider url={host.chartsUrl} pin={{ createDashboard: host.actions.createDashboard, saveDashboardWidget: host.actions.saveDashboardWidget }}>
+        <ChatSplit plansUrl={host.plansUrl}>
+          <Suspense fallback={<Skeleton className="h-[60vh]" />}>
+            <Conversation host={host} searchParams={searchParams} notice={notice} />
+          </Suspense>
+        </ChatSplit>
+      </ChartsProvider>
     </Suspense>
   );
 }

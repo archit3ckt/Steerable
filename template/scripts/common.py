@@ -329,7 +329,9 @@ def tell_owner(markdown: str) -> bool:
         import telegram
 
         if telegram.configured():
-            telegram.send(text)
+            import dashboards
+
+            telegram.send(dashboards.charts_as_words(text))
     except Exception as e:  # noqa: BLE001 - the chat has it either way
         log_run("tell_owner", "telegram_error", workflow=name, error=repr(e)[:200])
     log_run("tell_owner", "ok", workflow=name)

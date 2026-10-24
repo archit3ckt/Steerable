@@ -103,4 +103,4 @@ export async function backend(): Promise<CompanyBackend> {
   return agentBackend({ url: space.url, token, company: await currentCompany() });
 }
 
-export const host: DashboardHost = { backend, now, actions, connections: true, chatActivityUrl: "/api/chat/activity", statusUrl: "/api/status", chatFilesUrl: "/api/chat/files", chatPageUrl: "/api/chat/page", runChangesUrl: "/api/runs/changes", plansUrl: "/api/plans", checksUrl: "/api/checks", tracesUrl: "/api/traces", libraryFilesUrl: "/api/library/files" };
+export const host: DashboardHost = { backend, now, actions, connections: true, chatActivityUrl: "/api/chat/activity", statusUrl: "/api/status", chatFilesUrl: "/api/chat/files", chatPageUrl: "/api/chat/page", runChangesUrl: "/api/runs/changes", chartsUrl: "/api/charts", plansUrl: "/api/plans", checksUrl: "/api/checks", tracesUrl: "/api/traces", libraryFilesUrl: "/api/library/files" };

@@ -32,6 +32,17 @@ They live in the library database (library.db, so they're in the export), shown 
 
 The file for `save` is {"description": "...", "widgets": [...]}, the whole dashboard. Saving a name
 that exists updates that dashboard (no duplicates); to change one, start from `show`.
+
+A chart can also sit in a chat reply or a plan: one widget description (not list) in a ```chart block.
+The app counts it each time it's shown, so it never goes stale, and the owner can pin it to a dashboard.
+Check one first; it prints what it shows now, or what's wrong:
+
+    .venv/bin/python scripts/dashboards.py chart '{"type": "bars", "table": "Leads", "by": "Status"}'
+
+A routine telling the owner about figures it already has (not in a table) gives them instead of a
+table: {"type": "bars", "title": "Sales by product", "unit": "$", "items": [{"label": "Mugs", "value": 420}]},
+"points": [{"start": "2026-10-05", "value": 3}] with "every" for a trend, "value" (and "previous" with
+"period") for a number, "value" and "goal" for progress.
 """
 from __future__ import annotations
 
@@ -330,6 +341,104 @@ def compute(con, w: dict, today: date | None = None) -> dict:
     return out
 
 
+# ---------- charts in messages ----------
+
+CHART_BLOCK = re.compile(r"```chart[ \t]*\n(.*?)\n?```", re.S)
+MAX_ITEMS = 20
+
+
+def _figure(v, what: str):
+    if v is None:
+        return None
+    if isinstance(v, bool) or not isinstance(v, (int, float)):
+        raise DashboardError(f"{what} is a number.")
+    return v
+
+
+def _given(spec: dict) -> dict:
+    """A chart with its own figures (a routine's report): checked, kept as given."""
+    kind = spec.get("type")
+    if kind not in ("number", "bars", "trend", "progress"):
+        raise DashboardError("A chart with its own figures is a number, bars, trend or progress.")
+    title = str(spec.get("title") or "").strip()[:80]
+    if not title:
+        raise DashboardError("A chart with its own figures needs a title saying what they are.")
+    w: dict = {"type": kind, "title": title}
+    data: dict = {"unit": str(spec["unit"])[:8]} if spec.get("unit") else {}
+    if kind in ("number", "progress"):
+        data["value"] = _figure(spec.get("value"), "value")
+        if kind == "number" and spec.get("period"):
+            if spec["period"] not in PERIODS:
+                raise DashboardError(f"A period is one of {', '.join(PERIODS)}.")
+            w["period"] = spec["period"]
+            data["previous"] = _figure(spec.get("previous"), "previous")
+        if kind == "progress":
+            data["goal"] = _figure(spec.get("goal"), "goal")
+            if not data["goal"] or data["goal"] <= 0:
+                raise DashboardError("A progress chart needs a goal above zero.")
+    elif kind == "bars":
+        items = spec.get("items")
+        if not isinstance(items, list) or not items:
+            raise DashboardError("Bars with their own figures need items: [{\"label\": ..., \"value\": ...}].")
+        data["items"] = [{"label": str(i.get("label") or "")[:60], "value": _figure(i.get("value"), "Each bar's value")}
+                         for i in items[:MAX_ITEMS] if isinstance(i, dict)]
+        if len(items) > MAX_ITEMS:
+            data["more"] = len(items) - MAX_ITEMS
+    else:
+        every = spec.get("every") or "week"
+        if every not in EVERY:
+            raise DashboardError(f"A trend goes by {', '.join(EVERY)}.")
+        w["every"] = every
+        points = spec.get("points")
+        if not isinstance(points, list) or len(points) < 2:
+            raise DashboardError("A trend with its own figures needs points: [{\"start\": \"2026-10-05\", \"value\": ...}].")
+        clean = []
+        for p in points[-36:]:
+            start = str(p.get("start") if isinstance(p, dict) else "")
+            try:
+                date.fromisoformat(start)
+            except ValueError:
+                raise DashboardError("Each point's start is a date, like 2026-10-05.") from None
+            clean.append({"start": start, "value": _figure(p.get("value"), "Each point's value")})
+        data["points"] = clean
+    return {**w, "data": data}
+
+
+def chart(spec, today: date | None = None) -> dict:
+    """One chart for a message (a ```chart block in the chat or a plan), counted now and kept nowhere:
+    the widget as a dashboard would store it, with its table's name and what it shows. One with its
+    own figures comes back checked. Anything wrong comes back as {"error": plain words}."""
+    if not isinstance(spec, dict):
+        return {"error": "A chart is a description like {\"type\": \"bars\", \"table\": \"Leads\", \"by\": \"Status\"}."}
+    try:
+        if "table" not in spec:
+            return _given(spec)
+        if spec.get("type") == "list":
+            raise DashboardError("A chart in a message is a number, bars, trend or progress; rows belong in a table.")
+        with connect() as con:
+            w = clean_widget(con, spec)
+            w.pop("id", None)
+            w.pop("wide", None)
+            name = con.execute("SELECT name FROM tables WHERE id = ?", (w["table"],)).fetchone()
+            return {**w, "tableName": name[0] if name else None, "data": compute(con, w, today)}
+    except (DashboardError, library.LibraryError) as e:
+        return {"error": str(e)}
+
+
+def charts_as_words(text: str) -> str:
+    """A message for somewhere that can't draw charts (Telegram): each ```chart block becomes a line of
+    what it shows."""
+    def line(m: re.Match) -> str:
+        try:
+            got = chart(json.loads(m.group(1)))
+        except ValueError:
+            return ""
+        if got.get("error"):
+            return ""
+        return f"{got['title']}: {_says(got)}"
+    return CHART_BLOCK.sub(line, text or "")
+
+
 # ---------- dashboards ----------
 
 def _summary(r) -> dict:
@@ -591,14 +700,18 @@ def ask_prompt(a: dict, cli: str = ".venv/bin/python scripts/dashboards.py") -> 
 
 # ---------- the COO's command line ----------
 
-def _read_from(path: str) -> dict:
+def _read_json(path: str):
     p = (ROOT / path).resolve() if not Path(path).is_absolute() else Path(path).resolve()
     if ROOT.resolve() not in p.parents or not p.is_file():
         raise DashboardError("--from must be a file in the company folder, like drafts/sales-dashboard.json.")
     try:
-        data = json.loads(p.read_text(encoding="utf-8"))
+        return json.loads(p.read_text(encoding="utf-8"))
     except json.JSONDecodeError as e:
         raise DashboardError(f"That file isn't valid JSON: {e}.") from None
+
+
+def _read_from(path: str) -> dict:
+    data = _read_json(path)
     if isinstance(data, list):
         data = {"widgets": data}
     if not isinstance(data, dict) or not isinstance(data.get("widgets"), list):
@@ -642,6 +755,9 @@ def main() -> int:
     s.add_argument("name")
     s.add_argument("--from", dest="source", required=True, help="the whole dashboard, as JSON (drafts/...)")
     sub.add_parser("remove").add_argument("dashboard")
+    c = sub.add_parser("chart", help="check a chart for a message: what it shows now")
+    c.add_argument("spec", nargs="?", help="the chart, as JSON")
+    c.add_argument("--from", dest="source", help="or a file holding it (drafts/...)")
     args = ap.parse_args()
     try:
         if args.cmd == "sources":
@@ -676,6 +792,19 @@ def main() -> int:
             print(f"{'Made' if out['created'] else 'Updated'} the dashboard “{d['name']}” ({d['id']}): /library/dashboards/{d['id']}")
             for w in d["widgets"]:
                 print(f"- {w['title']}: {_says(w)}")
+        elif args.cmd == "chart":
+            if args.source:
+                spec = _read_json(args.source)
+            else:
+                try:
+                    spec = json.loads(args.spec or "")
+                except json.JSONDecodeError as e:
+                    raise DashboardError(f"That isn't valid JSON: {e}.") from None
+            got = chart(spec)
+            if got.get("error"):
+                raise DashboardError(got["error"])
+            print(f"{got['title']}: {_says(got)}")
+            print("\nIn a message:\n```chart\n" + json.dumps(spec, ensure_ascii=False) + "\n```")
         elif args.cmd == "remove":
             d = find(args.dashboard)
             if not d:

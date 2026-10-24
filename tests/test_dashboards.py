@@ -109,6 +109,21 @@ try:
     dashboards.ask("", None)
 except dashboards.DashboardError as e:
     out["empty_ask"] = str(e)
+# A chart in a message: counted now, kept nowhere; a routine's own figures checked; Telegram gets words.
+c = dashboards.chart({"type": "bars", "table": "leads", "by": "Status"}, TODAY)
+out["chart"] = (c["title"], c["tableName"], [i["value"] for i in c["data"]["items"]], "id" in c)
+out["chart_api"] = agent_api.chart({"w": [json.dumps({"type": "number", "table": "Leads"})]})
+out["chart_errors"] = [dashboards.chart(x).get("error", "") for x in (
+    {"type": "list", "table": "Leads"}, {"type": "bars", "table": "Nope", "by": "Status"},
+    {"type": "bars", "items": [{"label": "A", "value": 1}]}, {"type": "bars", "title": "T", "items": [{"label": "A", "value": "x"}]},
+    {"type": "trend", "title": "T", "points": [{"start": "soon", "value": 1}, {"start": "2026-10-12", "value": 2}]}, "pie")]
+out["chart_api_bad"] = agent_api.chart({"w": ["{nope"]})
+out["given"] = dashboards.chart({"type": "bars", "title": "Sales by product", "unit": "$",
+                                 "items": [{"label": "Mugs", "value": 420}, {"label": "Bowls", "value": 180}]})
+out["words"] = dashboards.charts_as_words("This week:\n\n```chart\n" + json.dumps(
+    {"type": "bars", "table": "Leads", "by": "Status"}) + "\n```\n\n```chart\n" + json.dumps(out["given"] | {"items": [
+    {"label": "Mugs", "value": 420}]}) + "\n```\nMore soon.")
+out["dashboards_after_chart"] = len(dashboards.dashboards())
 agent_api._dash(dashboards.remove, api["id"])
 out["listed"] = sorted(x["name"] for x in dashboards.dashboards())
 print(json.dumps(out))
@@ -177,6 +192,25 @@ class DashboardsTest(unittest.TestCase):
             self.assertIn("Say what you'd like to see", out["empty_ask"])
             self.assertEqual(out["listed"], ["Leads per week", "Sales"])
 
+            title, table, values, has_id = out["chart"]
+            self.assertEqual((title, table, values, has_id), ("Leads by Status", "Leads", [2, 1, 1, 1], False))
+            self.assertEqual(out["chart_api"]["data"], {"value": 5})
+            self.assertEqual(sorted(d["name"] for d in out["chart_api"]["dashboards"]), ["Job search", "Leads per week", "Sales"])
+            errors = out["chart_errors"]
+            self.assertIn("rows belong in a table", errors[0])
+            self.assertIn("no table called Nope", errors[1])
+            self.assertIn("needs a title", errors[2])
+            self.assertIn("value is a number", errors[3])
+            self.assertIn("start is a date", errors[4])
+            self.assertIn("A chart is a description", errors[5])
+            self.assertIn("isn't valid JSON", out["chart_api_bad"]["error"])
+            self.assertNotIn("dashboards", out["chart_api_bad"])
+            self.assertEqual(out["given"], {"type": "bars", "title": "Sales by product",
+                                            "data": {"unit": "$", "items": [{"label": "Mugs", "value": 420}, {"label": "Bowls", "value": 180}]}})
+            self.assertEqual(out["words"], "This week:\n\nLeads by Status: New: 2, Contacted: 1, Won: 1, Lost: 1\n\n"
+                                           "Sales by product: Mugs: 420\nMore soon.")
+            self.assertEqual(out["dashboards_after_chart"], 3)
+
             # The COO's command line: tables and columns, save from a file, show what it shows.
             (root / "drafts").mkdir(exist_ok=True)
             (root / "drafts" / "d.json").write_text(json.dumps({"description": "Weekly", "widgets": [
@@ -192,6 +226,13 @@ class DashboardsTest(unittest.TestCase):
             self.assertIn("New: 2, Contacted: 1", saved.stdout)
             shown = run("show", "weekly")
             self.assertIn('"table": "Leads"', shown.stdout)
+            checked = run("chart", '{"type": "number", "table": "Leads", "where": {"Status": "New"}}')
+            self.assertEqual(checked.returncode, 0, checked.stderr)
+            self.assertIn("Leads: 2", checked.stdout)
+            self.assertIn("```chart", checked.stdout)
+            wrong = run("chart", '{"type": "bars", "table": "Leads", "by": "Value"}')
+            self.assertEqual(wrong.returncode, 1)
+            self.assertIn("Value can't be", wrong.stderr)
             bad = run("save", "Weekly", "--from", "../outside.json")
             self.assertEqual(bad.returncode, 1)
             self.assertIn("in the company folder", bad.stderr)

@@ -12,6 +12,7 @@ import { PlanEditor, RemovePlan, RestorePlan } from "../library-plans";
 import { AskForDashboard, DashboardBoard, DashboardSettings, NewDashboard, type DashboardEditActions } from "../dashboard-editor";
 import { PlanChanges, withoutTitle } from "../plan-text";
 import { Markdown } from "../markdown";
+import { ChartsProvider } from "../message-chart";
 import { Poll } from "../poll";
 import { orNull } from "../shell";
 import { ArchiveTableButton, ArchivedTables } from "../library-table-archive";
@@ -36,7 +37,11 @@ function LibraryFrame({ host, active, children }: { host: DashboardHost; active?
           <TableList host={host} active={active} />
         </Suspense>
       </aside>
-      <div className="min-w-0 flex-1 lg:pt-10 lg:pb-12 lg:pl-8">{children}</div>
+      <div className="min-w-0 flex-1 lg:pt-10 lg:pb-12 lg:pl-8">
+        <ChartsProvider url={host.chartsUrl} pin={{ createDashboard: host.actions.createDashboard, saveDashboardWidget: host.actions.saveDashboardWidget }}>
+          {children}
+        </ChartsProvider>
+      </div>
     </div>
   );
 }

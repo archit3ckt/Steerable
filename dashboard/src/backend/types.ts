@@ -356,8 +356,8 @@ export type DashboardWidgetData = {
   value?: number | null;
   previous?: number | null;
   goal?: number;
-  /** bars: each value of `by` (filter: that value for the table's grid, "" for empty) */
-  items?: { label: string; value: number | null; filter: string }[];
+  /** bars: each value of `by` (filter: that value for the table's grid, "" for empty; none on a chart with its own figures) */
+  items?: { label: string; value: number | null; filter?: string }[];
   by?: string;
   more?: number;
   /** trend: each day, week or month by its first day */
@@ -375,6 +375,18 @@ export type DashboardWidget = DashboardWidgetSpec & {
   data?: DashboardWidgetData;
   /** Its table or a column is gone: what to fix, in plain words. */
   error?: string;
+};
+/**
+ * A chart in a message: a ```chart block in a reply or a plan, holding one widget description, counted
+ * by the engine each time it's shown (`chart()`). Over a library table it has `table` and the
+ * dashboards it can be pinned to; a routine's report may give its own figures instead (no table).
+ */
+export type MessageChart = Omit<DashboardWidgetSpec, "table"> & {
+  table?: string;
+  title: string;
+  tableName?: string | null;
+  data: DashboardWidgetData;
+  dashboards?: { id: string; name: string }[];
 };
 export type DashboardSummary = {
   id: string;
@@ -784,6 +796,8 @@ export interface CompanyBackend {
   /** Add a chart (widgetId null, at the end) or change one in place. */
   saveDashboardWidget(dashboardId: string, widgetId: string | null, widget: DashboardWidgetSpec): Promise<{ id: string }>;
   changeDashboardWidget(dashboardId: string, widgetId: string, action: "remove" | "up" | "down"): Promise<void>;
+  /** A ```chart block's text (JSON), counted now; a wrong one comes back as { error } in plain words. */
+  chart(block: string): Promise<MessageChart | { error: string }>;
   /** Ask the COO for a dashboard, or a change to this one; it works on it in the background (and in the chat). */
   askForDashboard(text: string, dashboardId?: string): Promise<DashboardAsk>;
   /** The business's plans, most recently changed first. */

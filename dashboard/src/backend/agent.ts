@@ -7,6 +7,7 @@ import type {
   DashboardAsk,
   DashboardDetail,
   DashboardSummary,
+  MessageChart,
   Plan,
   PlanDetail,
   PlanVersionDetail,
@@ -285,6 +286,7 @@ export function agentBackend({ url, token, company }: { url: string; token: stri
     async changeDashboardWidget(dashboardId, widgetId, action) {
       await call("POST", `/v1/dashboards/${id(dashboardId)}/widgets/${id(widgetId)}/${action}`, {}, WRITE_TIMEOUT_MS);
     },
+    chart: (block) => call<MessageChart | { error: string }>("GET", `/v1/chart?w=${encodeURIComponent(block)}`),
     askForDashboard: (text, dashboardId) =>
       call<DashboardAsk>("POST", "/v1/dashboards/asks", { text, dashboard: dashboardId ?? null }, WRITE_TIMEOUT_MS),
     plans: () => call<Plan[]>("GET", "/v1/plans"),

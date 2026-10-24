@@ -1,4 +1,5 @@
 /** Numbers and dates on dashboards, the same on the server and in the browser. */
+import type { MessageChart } from "./backend/types";
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 const MONTH_NAMES = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
@@ -63,4 +64,16 @@ export function tableHref(tableId: string, where: Record<string, string> = {}, r
   if (row) params.set("row", row);
   const qs = params.toString();
   return `/library/${encodeURIComponent(tableId)}${qs ? `?${qs}` : ""}`;
+}
+
+/** What a chart in a message shows, in one line of words (for Telegram, which can't draw it). */
+export function chartWords(chart: MessageChart): string {
+  const d = chart.data;
+  const n = (v: number | null | undefined) => formatValue(v, d.unit);
+  let says: string;
+  if (chart.type === "bars") says = (d.items ?? []).map((i) => `${i.label} ${n(i.value)}`).join(", ") + (d.more ? `, and ${d.more} more` : "") || "nothing yet";
+  else if (chart.type === "trend") says = (d.points ?? []).slice(-6).map((p) => `${bucketLabel(p.start, chart.every ?? "week")} ${n(p.value)}`).join(", ");
+  else if (chart.type === "progress") says = `${n(d.value)} of ${n(d.goal)}`;
+  else says = n(d.value) + (chart.period && d.previous !== undefined ? ` (${PERIOD_WORDS[chart.period][1]}: ${n(d.previous)})` : "");
+  return `${chart.title}: ${says}`;
 }

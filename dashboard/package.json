@@ -32,6 +32,7 @@
     "./file-routes": "./src/file-routes.ts",
     "./chat-routes": "./src/chat-routes.ts",
     "./run-routes": "./src/run-routes.ts",
+    "./chart-routes": "./src/chart-routes.ts",
     "./plan-routes": "./src/plan-routes.ts",
     "./check-routes": "./src/check-routes.ts",
     "./trace-routes": "./src/trace-routes.ts",

@@ -8,6 +8,7 @@ import type {
   DashboardWidget,
   DashboardWidgetData,
   DashboardWidgetSpec,
+  MessageChart,
 } from "./types";
 
 /** The sample company's dashboards, in memory, counted over its sample library like dashboards.py would. */
@@ -218,6 +219,37 @@ export function dashboardOps(library: () => Table[], stored: () => Stored[], ask
         if (to >= 0 && to < d.widgets.length) [d.widgets[at], d.widgets[to]] = [d.widgets[to], d.widgets[at]];
       }
       touch(d);
+    },
+    async chart(block: string): Promise<MessageChart | { error: string }> {
+      let spec: Record<string, unknown>;
+      try {
+        spec = JSON.parse(block);
+      } catch {
+        return { error: "This chart's description isn't valid JSON." };
+      }
+      if (!spec || typeof spec !== "object") return { error: "A chart is a description like {\"type\": \"bars\", \"table\": \"Leads\", \"by\": \"Status\"}." };
+      const type = spec.type as DashboardWidgetSpec["type"];
+      if (!["number", "bars", "trend", "progress"].includes(type)) return { error: "A chart in a message is a number, bars, trend or progress." };
+      if (typeof spec.table !== "string") {
+        // A routine's own figures, as dashboards.py checks them.
+        const title = typeof spec.title === "string" ? spec.title.trim() : "";
+        if (!title) return { error: "A chart with its own figures needs a title saying what they are." };
+        const data: DashboardWidgetData = typeof spec.unit === "string" ? { unit: spec.unit } : {};
+        if (type === "bars") data.items = ((spec.items as { label: string; value: number }[]) ?? []).slice(0, 20).map((i) => ({ label: String(i.label), value: i.value }));
+        else if (type === "trend") data.points = ((spec.points as { start: string; value: number }[]) ?? []).slice(-36);
+        else {
+          data.value = spec.value as number;
+          if (spec.previous !== undefined) data.previous = spec.previous as number;
+          if (type === "progress") data.goal = spec.goal as number;
+        }
+        return { type, title, ...(spec.every ? { every: spec.every as "week" } : {}), ...(spec.period ? { period: spec.period as "month" } : {}), data };
+      }
+      const t = table(spec.table);
+      if (!t) return { error: `There's no table called ${spec.table}.` };
+      const w = clean(spec as DashboardWidgetSpec, "");
+      const { id, ...rest } = w;
+      void id;
+      return { ...rest, tableName: t.name, data: compute(t, w), dashboards: stored().map((d) => ({ id: d.id, name: d.name })) };
     },
     async askForDashboard(text: string, dashboardId?: string): Promise<DashboardAsk> {
       const made: DashboardAsk = {

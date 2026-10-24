@@ -63,6 +63,11 @@ export type DashboardHost = {
    */
   tracesUrl?: string;
   /**
+   * A GET route answering the backend's chart() as JSON (?w=<block>; body in the package's
+   * chart-routes.ts). With it, ```chart blocks in replies and plans show as charts of the library.
+   */
+  chartsUrl?: string;
+  /**
    * A route for library spreadsheets (body in the package's library-routes.ts): GET exports a table,
    * POST imports a CSV or Excel file. With it, the library shows Import and Export.
    */

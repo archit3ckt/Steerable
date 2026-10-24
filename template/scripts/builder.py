@@ -438,6 +438,8 @@ def _how_to_work(name: str, wt: str, task: str) -> str:
   shows how far it's got ("37 of 150") and counts the arrow by itself.
 - News the owner should act on goes to them with common.tell_owner(markdown): at most one message per run,
   only when there's news (new matches, something that needs them). Not a run report: the timeline has that.
+  A few figures that compare or change over time read better as a chart: a ```chart block in the message,
+  over a library table or with its own figures (the format is at the top of scripts/dashboards.py).
 - The workflow must honor the STEERABLE_DRY_RUN=1 environment variable: do everything except
   contacting anyone, publishing, paying, or deleting data, and print what it would have done instead.
 - Anything it can't undo (submitting a form, sending, posting, paying, deleting) goes through

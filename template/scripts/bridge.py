@@ -103,7 +103,11 @@ def system_prompt(channel: str) -> str:
     style = ("The app shows Markdown, so use it where it helps (bold, short lists, a small table to "
              "compare), but keep it light: no headings for short answers. When you give them words to copy and paste "
              "(an email, a post, a reply), put them in a ```text block: the app shows it with a Copy button. Code or "
-             "settings go in a fenced block with its language." if channel == APP
+             "settings go in a fenced block with its language. When numbers from the library would read better as a "
+             "chart (how many per status, a trend, this month vs last), put one in a ```chart block: the same JSON "
+             "as a dashboard widget (number, bars, trend or progress, over a table), never figures you typed. The "
+             "app counts it from the library each time it's shown. Check it first with "
+             "`dashboards.py chart '<json>'`, and say in words what it shows." if channel == APP
              else "Reply in plain text (no markdown tables).")
     return (
         f"You are talking to the owner of {COMPANY} through {channel}, as their business manager. They know you by your "

@@ -68,6 +68,7 @@ Every request except GET /health needs `Authorization: Bearer <AGENT_API_TOKEN>`
     POST /v1/dashboards {name}; /v1/dashboards/<id> {name?, description?}; .../delete
     POST /v1/dashboards/<id>/widgets {widget}; .../widgets/<w> {widget}; .../widgets/<w>/<remove|up|down>
     GET  /v1/dashboards/asks; POST /v1/dashboards/asks {text, dashboard?}  ask the COO for a dashboard (in the background)
+    GET  /v1/chart?w=<json>           a ```chart block from a message, counted now (dashboards.chart)
     GET  /v1/runs/<run>/changes        what a routine run or chat turn changed in the library (?table&after&limit)
     GET  /v1/status                    what's running in the background (routines, chat, builds, fixes, its own jobs)
     GET  /v1/export                    the company's files as a .tar.gz (no secrets, caches or sessions)
@@ -1890,6 +1891,21 @@ def _dash(fn, *args):
         raise ApiError(404 if "no such dashboard" in str(e) else 400, str(e)) from None
 
 
+def chart(q: dict) -> dict:
+    """A ```chart block from a message, counted now, with the dashboards it could be pinned to."""
+    raw = (q.get("w") or [""])[0] or ""
+    if len(raw) > 8000:
+        raise ApiError(400, "That chart is too big.")
+    try:
+        spec = json.loads(raw)
+    except ValueError:
+        return {"error": "This chart's description isn't valid JSON."}
+    got = dashboards.chart(spec)
+    if not got.get("error") and got.get("table"):
+        got["dashboards"] = [{"id": d["id"], "name": d["name"]} for d in dashboards.dashboards()]
+    return got
+
+
 def dashboard_detail(did: str) -> dict:
     found = dashboards.detail(did)
     if not found or found["id"] != did:
@@ -2277,6 +2293,7 @@ ROUTES = [
     ("GET", r"/v1/library", lambda q, b: library.tables(archived=(q.get("archived") or [""])[0] == "1")),
     ("POST", r"/v1/library/tables/(?P<tid>[^/]+)/(?P<action>archive|restore)",
      lambda q, b, tid, action: _lib(lambda: (library.archive_table if action == "archive" else library.restore_table)(tid))),
+    ("GET", r"/v1/chart", lambda q, b: chart(q)),
     ("GET", r"/v1/dashboards", lambda q, b: dashboards.dashboards()),
     ("POST", r"/v1/dashboards", lambda q, b: _dash(dashboards.create, body_field(b, "name", str), "", "you")),
     ("GET", r"/v1/dashboards/asks", lambda q, b: dashboards.asks()),
